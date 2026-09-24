@@ -680,6 +680,14 @@ public class csSeisPaneBundle extends JPanel implements csIGraphPanelListener,
     if( mySeismicTraceBuffer == null ) return 0;
     return mySeismicTraceBuffer.numSamples();
   }
+  /** Traços carregados neste painel (já com processamento aplicado, se houver). Pode ser null. */
+  public csISeismicTraceBuffer getTraceBuffer() {
+    return mySeismicTraceBuffer;
+  }
+  /** Definições (nome, descrição, tipo) dos cabeçalhos de traço, na ordem de csSeismicTrace.headerValues(). */
+  public csHeaderDef[] getTraceHeaderDefs() {
+    return myTraceHeaderDef == null ? new csHeaderDef[0] : myTraceHeaderDef.clone();
+  }
   public csISeismicReader readImage( String filename ) {
     FileImageInputStream input = null;
     try {

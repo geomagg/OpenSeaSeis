@@ -266,6 +266,20 @@ public class SeaView extends JFrame implements csFileMenuListener {
         exitApplication();
       }
     });
+
+    // Plugins: adiciona o menu "Plugins" e instala as extensões encontradas
+    cseis.seaview.plugin.csPluginManager.installAll( this, myMenuBar );
+  }
+  //********************************************************************************
+  // API pública usada pelos plugins (cseis.seaview.plugin)
+  //********************************************************************************
+  /** Painel sísmico ativo (aba selecionada), ou null se nenhum arquivo estiver aberto. */
+  public csSeisPaneBundle getActiveBundle() {
+    return (csSeisPaneBundle)myDockPaneManager.getActivePanel();
+  }
+  /** Escreve uma mensagem na barra de status inferior. */
+  public void setStatusText( String text ) {
+    myStatusBar.setText( "   " + text );
   }
   //********************************************************************************
   public void addProcessingStep( String name ) {
