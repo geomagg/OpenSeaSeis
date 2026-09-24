@@ -22,7 +22,8 @@ import java.util.ServiceLoader;
  * <p>
  * Fontes, nesta ordem:
  * <ol>
- * <li>Plugins no classpath (módulo {@code plugins/} do projeto, embutido no executável).</li>
+ * <li>Plugins embutidos, listados em {@code cseis/resources/seaview_plugins.txt}.</li>
+ * <li>Plugins no classpath registrados via {@code META-INF/services}.</li>
  * <li>Jars em {@code -Dseaview.plugins.dir=...} (várias pastas separadas por ':' ou ';').</li>
  * <li>Jars em {@code <pasta do aplicativo>/plugins}.</li>
  * <li>Jars em {@code ~/.seaview/plugins}.</li>
@@ -42,6 +43,7 @@ public final class csPluginManager {
 
     ClassLoader loader = buildClassLoader();
     Map<String,csSeaViewPlugin> plugins = new LinkedHashMap<>();
+    loadBuiltInPlugins( loader, plugins );
     try {
       for( csSeaViewPlugin p : ServiceLoader.load( csSeaViewPlugin.class, loader ) ) {
         plugins.putIfAbsent( p.getClass().getName(), p );
@@ -69,6 +71,29 @@ public final class csPluginManager {
     menu.add( about );
 
     if( !failures.isEmpty() ) System.err.println( "SeaView: plugins com erro:\n  " + String.join( "\n  ", failures ) );
+  }
+
+  /** Plugins listados em cseis/resources/seaview_plugins.txt (compilados junto com o SeaView por make_java.sh). */
+  private static void loadBuiltInPlugins( ClassLoader loader, Map<String,csSeaViewPlugin> plugins ) {
+    java.io.InputStream in = csPluginManager.class.getResourceAsStream( "/cseis/resources/seaview_plugins.txt" );
+    if( in == null ) return;
+    try( java.io.BufferedReader r = new java.io.BufferedReader( new java.io.InputStreamReader( in, java.nio.charset.StandardCharsets.UTF_8 ) ) ) {
+      String line;
+      while( (line = r.readLine()) != null ) {
+        line = line.trim();
+        if( line.isEmpty() || line.startsWith( "#" ) ) continue;
+        try {
+          Object obj = Class.forName( line, true, loader ).getDeclaredConstructor().newInstance();
+          plugins.putIfAbsent( line, (csSeaViewPlugin)obj );
+        }
+        catch( Throwable t ) {
+          failures.add( line + ": " + t );
+        }
+      }
+    }
+    catch( java.io.IOException e ) {
+      failures.add( "seaview_plugins.txt: " + e );
+    }
   }
 
   public static List<String> getLoadedPluginNames() { return new ArrayList<>( loadedNames ); }

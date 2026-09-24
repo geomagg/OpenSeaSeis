@@ -5,12 +5,9 @@ package cseis.seaview.plugin;
  * <p>
  * Para criar uma nova funcionalidade:
  * <ol>
- * <li>Implemente esta interface (ex.: no módulo {@code plugins/}).</li>
- * <li>Registre a classe em {@code META-INF/services/cseis.seaview.plugin.csSeaViewPlugin}
- *     (uma classe por linha).</li>
- * <li>Recompile. Plugins do módulo {@code plugins/} já vão dentro do executável;
- *     jars externos podem ser colocados na pasta {@code plugins/} ao lado do executável
- *     ou em {@code ~/.seaview/plugins}.</li>
+ * <li>Crie a classe em {@code java/src/SeaView/cseis/plugins/}.</li>
+ * <li>Adicione o nome completo da classe em {@code java/src/SeaView/cseis/resources/seaview_plugins.txt}.</li>
+ * <li>Rode {@code ./make_java.sh} e copie os jars para a pasta lib da instalação.</li>
  * </ol>
  * O método {@link #install} roda na thread do Swing, uma vez, ao abrir o SeaView.
  */

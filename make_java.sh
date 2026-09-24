@@ -32,11 +32,11 @@ mkdir -p ${CLASS_XCSEIS}
 echo ${CLASS_CSEISLIB}
 
 echo "Compile CSeisLib..."
-$JAVAC java/src/CSeisLib/cseis/*/*.java -sourcepath java/src/CSeisLib/ -d ${CLASS_CSEISLIB}
+$JAVAC -encoding UTF-8 java/src/CSeisLib/cseis/*/*.java -sourcepath java/src/CSeisLib/ -d ${CLASS_CSEISLIB}
 echo "Compile SeaView..."
-$JAVAC java/src/SeaView/cseis/*/*.java -sourcepath java/src/SeaView/ -d ${CLASS_SEAVIEW} -cp ${CLASS_CSEISLIB}
+$JAVAC -encoding UTF-8 java/src/SeaView/cseis/*/*.java -sourcepath java/src/SeaView/ -d ${CLASS_SEAVIEW} -cp ${CLASS_CSEISLIB}
 echo "Compile XCSeis..."
-$JAVAC java/src/XCSeis/cseis/*/*.java -sourcepath java/src/XCSeis/ -d ${CLASS_XCSEIS} -cp ${CLASS_CSEISLIB}:${CLASS_SEAVIEW}
+$JAVAC -encoding UTF-8 java/src/XCSeis/cseis/*/*.java -sourcepath java/src/XCSeis/ -d ${CLASS_XCSEIS} -cp ${CLASS_CSEISLIB}:${CLASS_SEAVIEW}
 
 mkdir -p ${CLASS_CSEISLIB}/cseis/resources
 mkdir -p ${CLASS_SEAVIEW}/cseis/resources

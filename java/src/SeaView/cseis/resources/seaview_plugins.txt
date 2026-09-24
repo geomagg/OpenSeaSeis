@@ -1,0 +1,4 @@
+# Plugins embutidos no SeaView (um nome de classe por linha).
+# Para adicionar um plugin: crie a classe em java/src/SeaView/cseis/plugins/ e liste aqui.
+cseis.plugins.csPanelInfoPlugin
+cseis.plugins.csExportNpyPlugin
