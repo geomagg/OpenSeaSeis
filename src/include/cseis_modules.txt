@@ -48,6 +48,7 @@
   HDR_PRINT           1.0
   HDR_SET             1.0
   HISTOGRAM           1.0
+  HMO                 1.0
   HODOGRAM            1.0
   IF                  1.0
   IMAGE               1.0
