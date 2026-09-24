@@ -1646,16 +1646,12 @@ public class SeaView extends JFrame implements csFileMenuListener {
    * </ul>
    */
   public static void main( String[] args ) {
-    String path = System.getProperty( "java.library.path" );
-    String libName = System.mapLibraryName( "csJNIlib" );
     try {
-      System.load( path + java.io.File.separatorChar + libName );
+      cseis.jni.csNativeLibrary.load();
     }
     catch( java.lang.UnsatisfiedLinkError e ) {
       JOptionPane.showMessageDialog( null,
-          e.toString() + "\n" +
-          "java.library.path = " + System.getProperty( "java.library.path" ) + "\n" +
-          " - Seaview will not run.", "Error",
+          e.getMessage() + "\n - SeaView will not run.", "Error",
           JOptionPane.ERROR_MESSAGE );
       System.exit( -1 );
     }

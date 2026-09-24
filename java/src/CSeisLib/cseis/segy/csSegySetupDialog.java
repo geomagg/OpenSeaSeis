@@ -410,10 +410,8 @@ public class csSegySetupDialog extends JDialog {
     catch( Exception e ) {
       
     }
-    String path = System.getProperty( "java.library.path" );
-    String libName = System.mapLibraryName( "csJNIlib" );
     try {
-      System.load( path + "/" + libName );
+      cseis.jni.csNativeLibrary.load();
     }
     catch( java.lang.UnsatisfiedLinkError e ) {
       JOptionPane.showMessageDialog( null,

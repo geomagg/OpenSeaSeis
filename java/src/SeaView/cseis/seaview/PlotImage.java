@@ -592,7 +592,6 @@ public class PlotImage {
 //--------------------------------------------------------------------------------
 //
   public static void main( String[] args ) {
-    String path = System.getProperty( "java.library.path" );
     System.setProperty("java.awt.headless", "true");
     int counterArg = 0;
     try {
@@ -844,12 +843,11 @@ public class PlotImage {
 //     System.exit(0);
 //    }
     
-    String libName = System.mapLibraryName( "csJNIlib" );
     try {
-      System.load( path + "/" + libName );
+      cseis.jni.csNativeLibrary.load();
     }
     catch( java.lang.UnsatisfiedLinkError e ) {
-      System.err.println( e.toString() + "\n" + "java.library.path = " + System.getProperty( "java.library.path" ) + "\n" +
+      System.err.println( e.getMessage() + "\n" +
                           " - PlotImage will not run." );
       System.exit( -1 );
     }
