@@ -605,7 +605,7 @@ JNIEXPORT void JNICALL Java_cseis_jni_csNativeSeismicReader_native_1getSelectedV
   jmethodID id_setLongHeader   = env->GetMethodID(class_csSelectedHeaderBundle,"setLongValue","(IJ)V");
   jmethodID id_setTraceIndex   = env->GetMethodID(class_csSelectedHeaderBundle,"setSortedTraceIndex","(II)V");
 
-  if( id_setFloatHeader <= 0  || id_setDoubleHeader <= 0  || id_setIntHeader <= 0  || id_setLongHeader <= 0 ) {
+  if( id_setFloatHeader == NULL || id_setDoubleHeader == NULL || id_setIntHeader == NULL || id_setLongHeader == NULL || id_setTraceIndex == NULL ) {
     fprintf(stderr,"Error in JNI layer, csNativeSeismicReader: getSelectedValues. Cannot find Java methods");
     return;
   }
