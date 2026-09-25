@@ -111,6 +111,8 @@ public class csSpectrogramPlugin implements csSeaViewPlugin {
     TraceData td = new TraceData( s.clone(), view.getSampleInt() / 1000.0, itrc, buf.originalTraceNumber( itrc ),
                                   describeTrace( buf.headerValues( itrc ), defs ), startTimeUtc( buf.headerValues( itrc ), defs ), fileName );
 
+    td.processedInSeaView = ( buf instanceof cseis.seis.csTraceBuffer ) && ( (cseis.seis.csTraceBuffer)buf ).isProcessed();
+
     if( myLastFrame == null || !myLastFrame.isDisplayable() || myNewWindowPerClick ) {
       SpectrogramFrame f = new SpectrogramFrame( myLastFrame );
       if( myLastFrame != null && myLastFrame.isDisplayable() ) {
@@ -167,6 +169,7 @@ public class csSpectrogramPlugin implements csSeaViewPlugin {
     final String headers;
     final String startUtc;
     final String fileName;
+    boolean processedInSeaView;
     TraceData( float[] samples, double dt, int traceIndex, int traceNumber, String headers, String startUtc, String fileName ) {
       this.samples = samples; this.dt = dt; this.traceIndex = traceIndex; this.traceNumber = traceNumber;
       this.headers = headers; this.startUtc = startUtc; this.fileName = fileName;
@@ -189,9 +192,6 @@ public class csSpectrogramPlugin implements csSeaViewPlugin {
     int nframes = Math.max( 1, 1 + ( n - nwin ) / hop );
     int nfreq = nwin / 2 + 1;
 
-    double mean = 0;
-    for( float v : x ) mean += v;
-    mean /= Math.max( 1, n );
 
     double[] w = new double[nwin];
     double wss = 0;
@@ -214,7 +214,7 @@ public class csSpectrogramPlugin implements csSeaViewPlugin {
       int i0 = f * hop;
       for( int i = 0; i < nwin; i++ ) {
         int k = i0 + i;
-        re[i] = k < n ? ( x[k] - mean ) * w[i] : 0.0;
+        re[i] = k < n ? x[k] * w[i] : 0.0;
         im[i] = 0.0;
       }
       fft( re, im );
@@ -228,6 +228,76 @@ public class csSpectrogramPlugin implements csSeaViewPlugin {
       r.frameTime[f] = ( i0 + nwin / 2.0 ) * dt;
     }
     return r;
+  }
+
+  //------------------------------------------------------------------
+  // Pré-processamento
+  static final String DETREND_MEAN = "remover média", DETREND_LINEAR = "remover tendência linear", DETREND_NONE = "nada";
+
+  /** Remove média/tendência e aplica passa-alta e/ou passa-baixa Butterworth (4 polos, fase zero). fc <= 0: desligado. */
+  static float[] preprocess( float[] in, double dt, String detrend, double fcHigh, double fcLow ) {
+    int n = in.length;
+    double[] x = new double[n];
+    for( int i = 0; i < n; i++ ) x[i] = in[i];
+    if( DETREND_MEAN.equals( detrend ) || DETREND_LINEAR.equals( detrend ) ) {
+      double sy = 0, st = 0, stt = 0, sty = 0;
+      for( int i = 0; i < n; i++ ) { sy += x[i]; st += i; stt += (double)i * i; sty += i * x[i]; }
+      double a = sy / Math.max( 1, n ), b = 0;
+      if( DETREND_LINEAR.equals( detrend ) && n > 1 ) {
+        b = ( n * sty - st * sy ) / ( n * stt - st * st );
+        a = ( sy - b * st ) / n;
+      }
+      for( int i = 0; i < n; i++ ) x[i] -= a + b * i;
+    }
+    double fny = 0.5 / dt;
+    if( fcHigh > 0 && fcHigh < fny ) x = filtfilt( x, dt, fcHigh, true );
+    if( fcLow > 0 && fcLow < fny ) x = filtfilt( x, dt, fcLow, false );
+    float[] out = new float[n];
+    for( int i = 0; i < n; i++ ) out[i] = (float)x[i];
+    return out;
+  }
+
+  /** Butterworth de 4 polos (2 biquads), aplicado ida e volta (fase zero), com extensão por reflexão ímpar nas bordas. */
+  static double[] filtfilt( double[] x, double dt, double fc, boolean highpass ) {
+    int n = x.length;
+    if( n < 4 ) return x;
+    int pad = Math.min( n - 1, (int)Math.ceil( 3.0 / ( fc * dt ) ) );
+    double[] y = new double[n + 2 * pad];
+    for( int i = 0; i < pad; i++ ) {
+      y[pad - 1 - i] = 2 * x[0] - x[i + 1];
+      y[pad + n + i] = 2 * x[n - 1] - x[n - 2 - i];
+    }
+    System.arraycopy( x, 0, y, pad, n );
+    double[] qs = { 0.54119610, 1.30656296 };     // Q dos pares de polos do Butterworth de ordem 4
+    for( int pass = 0; pass < 2; pass++ ) {
+      for( double q : qs ) biquad( y, dt, fc, q, highpass );
+      reverse( y );
+    }
+    double[] r = new double[n];
+    System.arraycopy( y, pad, r, 0, n );
+    return r;
+  }
+
+  private static void biquad( double[] y, double dt, double fc, double q, boolean highpass ) {
+    double w0 = 2 * Math.PI * fc * dt, cs = Math.cos( w0 ), alpha = Math.sin( w0 ) / ( 2 * q );
+    double b0, b1, b2;
+    if( highpass ) { b0 = ( 1 + cs ) / 2; b1 = -( 1 + cs ); b2 = b0; }
+    else           { b0 = ( 1 - cs ) / 2; b1 = 1 - cs;      b2 = b0; }
+    double a0 = 1 + alpha, a1 = -2 * cs, a2 = 1 - alpha;
+    b0 /= a0; b1 /= a0; b2 /= a0; a1 /= a0; a2 /= a0;
+    double x1 = y[0], x2 = y[0];
+    double s = highpass ? 0 : y[0];               // estado inicial em regime (evita degrau na borda)
+    double y1 = s, y2 = s;
+    for( int i = 0; i < y.length; i++ ) {
+      double xi = y[i];
+      double yi = b0 * xi + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+      x2 = x1; x1 = xi; y2 = y1; y1 = yi;
+      y[i] = yi;
+    }
+  }
+
+  private static void reverse( double[] a ) {
+    for( int i = 0, j = a.length - 1; i < j; i++, j-- ) { double t = a[i]; a[i] = a[j]; a[j] = t; }
   }
 
   /** FFT radix-2 in-place (n potência de 2). */
@@ -262,23 +332,58 @@ public class csSpectrogramPlugin implements csSeaViewPlugin {
   }
 
   //------------------------------------------------------------------
-  // Paleta tipo "viridis" (interpolação linear entre pontos de controle)
-  private static final float[][] VIRIDIS = {
-    { 0.267f, 0.005f, 0.329f }, { 0.283f, 0.141f, 0.458f }, { 0.254f, 0.265f, 0.530f },
-    { 0.207f, 0.372f, 0.553f }, { 0.164f, 0.471f, 0.558f }, { 0.128f, 0.567f, 0.551f },
-    { 0.135f, 0.659f, 0.518f }, { 0.267f, 0.749f, 0.441f }, { 0.478f, 0.821f, 0.318f },
-    { 0.741f, 0.873f, 0.150f }, { 0.993f, 0.906f, 0.144f } };
+  // Paletas de cor: pontos de controle (posição, r, g, b) interpolados linearmente em uma tabela de 256 cores
+  static final String[] COLORMAPS = { "viridis", "inferno", "plasma", "turbo", "jet", "hot", "cinza", "cinza invertido" };
 
-  static int colorRgb( double v ) {        // v em [0,1]
-    if( !( v > 0 ) ) v = 0;
-    if( v > 1 ) v = 1;
-    double p = v * ( VIRIDIS.length - 1 );
-    int i = Math.min( (int)p, VIRIDIS.length - 2 );
-    double t = p - i;
-    int r = (int)( 255 * ( VIRIDIS[i][0] + t * ( VIRIDIS[i+1][0] - VIRIDIS[i][0] ) ) );
-    int g = (int)( 255 * ( VIRIDIS[i][1] + t * ( VIRIDIS[i+1][1] - VIRIDIS[i][1] ) ) );
-    int b = (int)( 255 * ( VIRIDIS[i][2] + t * ( VIRIDIS[i+1][2] - VIRIDIS[i][2] ) ) );
-    return ( r << 16 ) | ( g << 8 ) | b;
+  private static final double[][] CM_VIRIDIS = {
+    {0,.267,.005,.329},{.1,.283,.141,.458},{.2,.254,.265,.530},{.3,.207,.372,.553},{.4,.164,.471,.558},{.5,.128,.567,.551},
+    {.6,.135,.659,.518},{.7,.267,.749,.441},{.8,.478,.821,.318},{.9,.741,.873,.150},{1,.993,.906,.144} };
+  private static final double[][] CM_INFERNO = {
+    {0,.001,.000,.014},{.1,.088,.044,.225},{.2,.258,.039,.406},{.3,.416,.090,.433},{.4,.578,.148,.404},{.5,.735,.216,.330},
+    {.6,.865,.317,.226},{.7,.955,.445,.110},{.8,.988,.645,.040},{.9,.964,.843,.273},{1,.988,.998,.645} };
+  private static final double[][] CM_PLASMA = {
+    {0,.050,.030,.528},{.1,.254,.014,.615},{.2,.417,.001,.658},{.3,.562,.051,.641},{.4,.692,.165,.565},{.5,.798,.280,.470},
+    {.6,.881,.393,.383},{.7,.949,.518,.296},{.8,.988,.652,.211},{.9,.988,.809,.145},{1,.940,.975,.131} };
+  private static final double[][] CM_JET = {
+    {0,0,0,.5},{.125,0,0,1},{.375,0,1,1},{.625,1,1,0},{.875,1,0,0},{1,.5,0,0} };
+  private static final double[][] CM_HOT = {
+    {0,0,0,0},{.375,1,0,0},{.75,1,1,0},{1,1,1,1} };
+  private static final double[][] CM_GRAY = { {0,0,0,0},{1,1,1,1} };
+  private static final double[][] CM_GRAY_INV = { {0,1,1,1},{1,0,0,0} };
+
+  static int[] colormapLut( String name ) {
+    int[] lut = new int[256];
+    for( int i = 0; i < 256; i++ ) {
+      double v = i / 255.0;
+      double r, g, b;
+      if( "turbo".equals( name ) ) {        // aproximação polinomial do "Turbo" (Google, 2019)
+        r = 0.13572138 + v*(4.61539260 + v*(-42.66032258 + v*(132.13108234 + v*(-152.94239396 + v*59.28637943))));
+        g = 0.09140261 + v*(2.19418839 + v*(4.84296658 + v*(-14.18503333 + v*(4.27729857 + v*2.82956604))));
+        b = 0.10667330 + v*(12.64194608 + v*(-60.58204836 + v*(110.36276771 + v*(-89.90310912 + v*27.34824973))));
+      }
+      else {
+        double[][] cm = "inferno".equals( name ) ? CM_INFERNO : "plasma".equals( name ) ? CM_PLASMA : "jet".equals( name ) ? CM_JET
+                      : "hot".equals( name ) ? CM_HOT : "cinza".equals( name ) ? CM_GRAY : "cinza invertido".equals( name ) ? CM_GRAY_INV : CM_VIRIDIS;
+        int k = 0;
+        while( k < cm.length - 2 && v > cm[k + 1][0] ) k++;
+        double t = ( v - cm[k][0] ) / ( cm[k + 1][0] - cm[k][0] );
+        t = Math.max( 0, Math.min( 1, t ) );
+        r = cm[k][1] + t * ( cm[k + 1][1] - cm[k][1] );
+        g = cm[k][2] + t * ( cm[k + 1][2] - cm[k][2] );
+        b = cm[k][3] + t * ( cm[k + 1][3] - cm[k][3] );
+      }
+      int ri = (int)Math.round( 255 * Math.max( 0, Math.min( 1, r ) ) );
+      int gi = (int)Math.round( 255 * Math.max( 0, Math.min( 1, g ) ) );
+      int bi = (int)Math.round( 255 * Math.max( 0, Math.min( 1, b ) ) );
+      lut[i] = ( ri << 16 ) | ( gi << 8 ) | bi;
+    }
+    return lut;
+  }
+
+  static int lutColor( int[] lut, double v ) {   // v em [0,1]
+    if( !( v > 0 ) ) return lut[0];
+    if( v >= 1 ) return lut[255];
+    return lut[(int)( v * 255 + 0.5 )];
   }
 
   //==================================================================
@@ -295,6 +400,13 @@ public class csSpectrogramPlugin implements csSeaViewPlugin {
     private final JTextField myFmax = new JTextField( "", 5 );
     private final JComboBox<String> myFScale = new JComboBox<>( new String[]{ "linear", "log" } );
     private final JComboBox<Integer> myRange = new JComboBox<>( new Integer[]{ 40, 60, 80, 100, 120 } );
+    private final JComboBox<String> myCmap = new JComboBox<>( COLORMAPS );
+    private final JComboBox<String> myDetrend = new JComboBox<>( new String[]{ DETREND_MEAN, DETREND_LINEAR, DETREND_NONE } );
+    private final JTextField myHp = new JTextField( "", 4 );
+    private final JTextField myLp = new JTextField( "", 4 );
+    private float[] myProcessed;        // traço após remoção de tendência/filtro (usado no gráfico e na STFT)
+    private String myPreText = "";
+    private int[] myLut = colormapLut( "viridis" );
 
     SpectrogramFrame( SpectrogramFrame copySettingsFrom ) {
       super( "Espectrograma" );
@@ -310,33 +422,54 @@ public class csSpectrogramPlugin implements csSeaViewPlugin {
         myFmax.setText( copySettingsFrom.myFmax.getText() );
         myFScale.setSelectedItem( copySettingsFrom.myFScale.getSelectedItem() );
         myRange.setSelectedItem( copySettingsFrom.myRange.getSelectedItem() );
+        myCmap.setSelectedItem( copySettingsFrom.myCmap.getSelectedItem() );
+        myDetrend.setSelectedItem( copySettingsFrom.myDetrend.getSelectedItem() );
+        myHp.setText( copySettingsFrom.myHp.getText() );
+        myLp.setText( copySettingsFrom.myLp.getText() );
+        myLut = colormapLut( (String)myCmap.getSelectedItem() );
       }
 
-      JPanel controls = new JPanel( new FlowLayout( FlowLayout.LEFT, 6, 2 ) );
-      controls.add( new JLabel( "Janela (amostras):" ) ); controls.add( myWin );
-      controls.add( new JLabel( "Sobreposição %:" ) );   controls.add( myOverlap );
-      controls.add( new JLabel( "f mín:" ) ); controls.add( myFmin );
-      controls.add( new JLabel( "f máx [Hz]:" ) ); controls.add( myFmax );
-      controls.add( new JLabel( "Escala f:" ) ); controls.add( myFScale );
-      controls.add( new JLabel( "Faixa [dB]:" ) ); controls.add( myRange );
+      // Linha 1: cálculo (pré-processamento + STFT)
+      JPanel rowCalc = new JPanel( new FlowLayout( FlowLayout.LEFT, 6, 1 ) );
+      rowCalc.add( new JLabel( "Antes da STFT:" ) ); rowCalc.add( myDetrend );
+      rowCalc.add( new JLabel( "Passa-alta [Hz]:" ) ); rowCalc.add( myHp );
+      rowCalc.add( new JLabel( "Passa-baixa [Hz]:" ) ); rowCalc.add( myLp );
+      rowCalc.add( new JLabel( "  Janela:" ) ); rowCalc.add( myWin );
+      rowCalc.add( new JLabel( "Sobreposição %:" ) ); rowCalc.add( myOverlap );
+      String filtTip = "Butterworth de 4 polos, fase zero (ida e volta). Vazio ou 0 = sem filtro. Enter aplica.";
+      myHp.setToolTipText( filtTip );
+      myLp.setToolTipText( filtTip );
+      myWin.setToolTipText( "Tamanho da janela em amostras (maior = mais resolução em frequência, menos no tempo)" );
 
-      JPanel controls2 = new JPanel( new FlowLayout( FlowLayout.LEFT, 6, 2 ) );
+      // Linha 2: exibição
+      JPanel rowDisp = new JPanel( new FlowLayout( FlowLayout.LEFT, 6, 1 ) );
+      rowDisp.add( new JLabel( "f mín:" ) ); rowDisp.add( myFmin );
+      rowDisp.add( new JLabel( "f máx [Hz]:" ) ); rowDisp.add( myFmax );
+      rowDisp.add( new JLabel( "Escala f:" ) ); rowDisp.add( myFScale );
+      rowDisp.add( new JLabel( "Faixa [dB]:" ) ); rowDisp.add( myRange );
+      rowDisp.add( new JLabel( "Cores:" ) ); rowDisp.add( myCmap );
+
+      // Linha 3: ações
+      JPanel rowAct = new JPanel( new FlowLayout( FlowLayout.LEFT, 6, 1 ) );
       JCheckBox newWin = new JCheckBox( "Nova janela a cada clique (comparar traços)", myNewWindowPerClick );
       newWin.addActionListener( e -> myNewWindowPerClick = newWin.isSelected() );
       JButton save = new JButton( "Salvar PNG..." );
       save.addActionListener( e -> savePng() );
-      controls2.add( newWin );
-      controls2.add( save );
-      controls2.add( myCursor );
+      rowAct.add( newWin );
+      rowAct.add( save );
+      rowAct.add( myCursor );
 
-      JPanel top = new JPanel( new GridLayout( 3, 1 ) );
-      myInfo.setBorder( BorderFactory.createEmptyBorder( 2, 8, 2, 8 ) );
-      top.add( myInfo ); top.add( controls ); top.add( controls2 );
+      JPanel top = new JPanel();
+      top.setLayout( new javax.swing.BoxLayout( top, javax.swing.BoxLayout.Y_AXIS ) );
+      myInfo.setBorder( BorderFactory.createEmptyBorder( 3, 8, 3, 8 ) );
+      for( JPanel r : new JPanel[]{ rowCalc, rowDisp, rowAct } ) r.setAlignmentX( 0f );
+      myInfo.setAlignmentX( 0f );
+      top.add( myInfo ); top.add( rowCalc ); top.add( rowDisp ); top.add( rowAct );
 
       getContentPane().setLayout( new BorderLayout() );
       getContentPane().add( top, BorderLayout.NORTH );
       getContentPane().add( myPlot, BorderLayout.CENTER );
-      myPlot.setPreferredSize( new Dimension( 900, 560 ) );
+      myPlot.setPreferredSize( new Dimension( 1020, 560 ) );
 
       myWin.addActionListener( e -> recompute() );
       myOverlap.addChangeListener( e -> recompute() );
@@ -344,6 +477,15 @@ public class csSpectrogramPlugin implements csSeaViewPlugin {
       myFmax.addActionListener( e -> myPlot.repaint() );
       myFScale.addActionListener( e -> myPlot.repaint() );
       myRange.addActionListener( e -> myPlot.repaint() );
+      myCmap.addActionListener( e -> { myLut = colormapLut( (String)myCmap.getSelectedItem() ); myPlot.invalidateImage(); myPlot.repaint(); } );
+      myDetrend.addActionListener( e -> recompute() );
+      myHp.addActionListener( e -> recompute() );
+      myLp.addActionListener( e -> recompute() );
+      java.awt.event.FocusAdapter fa = new java.awt.event.FocusAdapter() {
+        @Override public void focusLost( java.awt.event.FocusEvent e ) { recompute(); }
+      };
+      myHp.addFocusListener( fa );
+      myLp.addFocusListener( fa );
       pack();
     }
 
@@ -364,12 +506,20 @@ public class csSpectrogramPlugin implements csSeaViewPlugin {
       if( myTrace == null ) return;
       int nwin = (Integer)myWin.getSelectedItem();
       int ov = (Integer)myOverlap.getValue();
-      myStft = compute( myTrace.samples, myTrace.dt, nwin, ov );
+      double hp = parse( myHp.getText(), 0 ), lp = parse( myLp.getText(), 0 );
+      String det = (String)myDetrend.getSelectedItem();
+      myProcessed = preprocess( myTrace.samples, myTrace.dt, det, hp, lp );
+      StringBuilder pre = new StringBuilder( det );
+      if( hp > 0 && hp < fNyq() ) pre.append( ", passa-alta " ).append( fmt( hp ) ).append( " Hz" );
+      if( lp > 0 && lp < fNyq() ) pre.append( ", passa-baixa " ).append( fmt( lp ) ).append( " Hz" );
+      myPreText = pre.toString();
+      myStft = compute( myProcessed, myTrace.dt, nwin, ov );
       int nwinUsed = 2 * ( myStft.nfreq - 1 );
-      myInfo.setText( String.format( Locale.US, "<html><b>Traço %d</b> &nbsp;&nbsp; %s%s<br>%d amostras, dt = %s ms, duração %s s &nbsp;&nbsp;|&nbsp;&nbsp; janela %d amostras = %s s, Δf = %s Hz, %d janelas</html>",
+      myInfo.setText( String.format( Locale.US, "<html><b>Traço %d</b> &nbsp;&nbsp; %s%s<br>%d amostras, dt = %s ms, duração %s s &nbsp;&nbsp;|&nbsp;&nbsp; janela %d amostras = %s s, Δf = %s Hz, %d janelas &nbsp;&nbsp;|&nbsp;&nbsp; pré: %s%s</html>",
           myTrace.traceNumber, myTrace.headers.replace( "  |  ", " &nbsp;|&nbsp; " ), myTrace.startUtc == null ? "" : " &nbsp;&nbsp; início: " + myTrace.startUtc,
           myTrace.samples.length, fmt( myTrace.dt * 1000 ), fmt( myTrace.samples.length * myTrace.dt ),
-          nwinUsed, fmt( nwinUsed * myTrace.dt ), fmt( myStft.df ), myStft.psd.length ) );
+          nwinUsed, fmt( nwinUsed * myTrace.dt ), fmt( myStft.df ), myStft.psd.length, myPreText,
+          myTrace.processedInSeaView ? " &nbsp; <font color='#b00000'><b>atenção: traço já processado no SeaView (filtro/AGC ativo)</b></font>" : "" ) );
       myPlot.invalidateImage();
       myPlot.repaint();
     }
@@ -459,7 +609,7 @@ public class csSpectrogramPlugin implements csSeaViewPlugin {
         }
         else {
           int is = Math.min( myTrace.samples.length - 1, (int)( t / myTrace.dt ) );
-          myCursor.setText( String.format( Locale.US, "t = %s s   amplitude = %g", fmt( t ), myTrace.samples[is] ) );
+          myCursor.setText( String.format( Locale.US, "t = %s s   amplitude = %g", fmt( t ), myProcessed[is] ) );
         }
       }
 
@@ -482,7 +632,7 @@ public class csSpectrogramPlugin implements csSeaViewPlugin {
       }
 
       private void buildImage( int w, int h ) {
-        String key = w + "x" + h + "|" + fMin() + "|" + fMax() + "|" + isLog() + "|" + rangeDb();
+        String key = w + "x" + h + "|" + fMin() + "|" + fMax() + "|" + isLog() + "|" + rangeDb() + "|" + myCmap.getSelectedItem();
         if( myImage != null && key.equals( myImageKey ) ) return;
         myImage = new BufferedImage( w, h, BufferedImage.TYPE_INT_RGB );
         double dur = duration();
@@ -493,7 +643,7 @@ public class csSpectrogramPlugin implements csSeaViewPlugin {
           double t = ( x + 0.5 ) * dur / w;
           for( int y = 0; y < h; y++ ) {
             double v = ( valueAt( t, freqs[y] ) - ( top - range ) ) / range;
-            myImage.setRGB( x, y, colorRgb( v ) );
+            myImage.setRGB( x, y, lutColor( myLut, v ) );
           }
         }
         myImageKey = key;
@@ -519,18 +669,18 @@ public class csSpectrogramPlugin implements csSeaViewPlugin {
         //--- Forma de onda
         int wt = waveTop(), wh = waveHeight();
         float amax = 0;
-        for( float v : myTrace.samples ) amax = Math.max( amax, Math.abs( v ) );
+        for( float v : myProcessed ) amax = Math.max( amax, Math.abs( v ) );
         if( amax == 0 ) amax = 1;
         g.setColor( new Color( 245, 245, 245 ) );
         g.fillRect( ML, wt, pw, wh );
         g.setColor( new Color( 40, 40, 40 ) );
-        int ns = myTrace.samples.length;
+        int ns = myProcessed.length;
         int yMid = wt + wh / 2;
         if( ns > 2 * pw ) {                         // min/max por coluna de pixel
           for( int x = 0; x < pw; x++ ) {
             int i0 = (int)( (long)x * ns / pw ), i1 = Math.max( i0 + 1, (int)( (long)( x + 1 ) * ns / pw ) );
             float mn = Float.MAX_VALUE, mx = -Float.MAX_VALUE;
-            for( int i = i0; i < i1 && i < ns; i++ ) { mn = Math.min( mn, myTrace.samples[i] ); mx = Math.max( mx, myTrace.samples[i] ); }
+            for( int i = i0; i < i1 && i < ns; i++ ) { mn = Math.min( mn, myProcessed[i] ); mx = Math.max( mx, myProcessed[i] ); }
             g.drawLine( ML + x, yMid - (int)( mx / amax * wh / 2 ), ML + x, yMid - (int)( mn / amax * wh / 2 ) );
           }
         }
@@ -538,7 +688,7 @@ public class csSpectrogramPlugin implements csSeaViewPlugin {
           int px = -1, py = 0;
           for( int i = 0; i < ns; i++ ) {
             int x = ML + (int)( ( i + 0.5 ) * pw / ns );
-            int y = yMid - (int)( myTrace.samples[i] / amax * wh / 2 );
+            int y = yMid - (int)( myProcessed[i] / amax * wh / 2 );
             if( px >= 0 ) g.drawLine( px, py, x, y );
             px = x; py = y;
           }
@@ -586,7 +736,7 @@ public class csSpectrogramPlugin implements csSeaViewPlugin {
         // Barra de cores
         int cbx = ML + pw + 18, cbw = 16;
         for( int y = 0; y < sh; y++ ) {
-          g.setColor( new Color( colorRgb( 1.0 - (double)y / ( sh - 1 ) ) ) );
+          g.setColor( new Color( lutColor( myLut, 1.0 - (double)y / ( sh - 1 ) ) ) );
           g.drawLine( cbx, st + y, cbx + cbw, st + y );
         }
         g.setColor( Color.darkGray );
@@ -653,5 +803,6 @@ public class csSpectrogramPlugin implements csSeaViewPlugin {
   }
 
   /** Para testes sem interface: calcula a STFT de um vetor. */
-  static Stft computeForTest( float[] x, double dt, int nwin, int ov ) { return compute( x, dt, nwin, ov ); }
+  static Stft computeForTest( float[] x, double dt, int nwin, int ov ) { return compute( preprocess( x, dt, DETREND_MEAN, 0, 0 ), dt, nwin, ov ); }
+  static float[] preprocessForTest( float[] x, double dt, String det, double hp, double lp ) { return preprocess( x, dt, det, hp, lp ); }
 }
