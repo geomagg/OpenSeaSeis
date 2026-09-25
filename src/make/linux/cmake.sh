@@ -46,6 +46,10 @@ if [ ${BUILD_FFTW} -eq 1 ]; then
     makefiles="$makefiles $(find src/cs/modules -name Makefile_fftw -print)"
     echo $makefiles
 fi
+# Add make files for modules that use the HDF5 library:
+if [ ${BUILD_HDF5:-0} -eq 1 ]; then
+    makefiles="$makefiles $(find src/cs/modules -name Makefile_hdf5 -print)"
+fi
 makefiles="$makefiles $(find src/cs/modules -name Makefile -print)"
 # Add make files for Fortran modules:
 if [ ${BUILD_F77} -eq 1 ]; then

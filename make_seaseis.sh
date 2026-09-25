@@ -7,6 +7,7 @@
 # Compiler settings
 #
 export BUILD_FFTW=0 # Set to 1 if FFTW3 library is installed. Set details below where to find FFTW library
+export BUILD_HDF5=1 # Module INPUT_HDF5. Skipped automatically if the HDF5 library is not found (see HDF5_DIR below)
 export BUILD_F77=1  # Set to 1 if Fortran compiler is available
 export BUILD_SU=0   # Set to 1 if SU module shall be compiled. Requires special SU installation, see file README_SU
 export BUILD_MPI=0  # Set to 1 to build with MPI enabled
@@ -111,11 +112,40 @@ if [ ${BUILD_FFTW} -eq 1 ]; then
   fi
 fi
 
+#********************************************************************************
+# Check if the HDF5 library is installed (module INPUT_HDF5)
+# RHEL/CentOS: yum install hdf5-devel    Ubuntu/Debian: apt install libhdf5-dev
+# Own installation: HDF5_DIR=/path/to/hdf5 ./make_seaseis.sh   (expects include/ and lib/ below it)
+
+export LIBHDF5=hdf5
+if [ ${BUILD_HDF5} -eq 1 ]; then
+  export INCDIR_HDF5=""
+  export LIBDIR_HDF5=""
+  for dir in ${HDF5_DIR} /usr /usr/local /usr/include/hdf5/serial; do
+    if [ -z "${INCDIR_HDF5}" ]; then
+      for inc in ${dir}/include ${dir}; do
+        if [ -f ${inc}/hdf5.h ]; then export INCDIR_HDF5=${inc}; break; fi
+      done
+    fi
+  done
+  for lib in ${HDF5_DIR}/lib ${HDF5_DIR}/lib64 /usr/lib64 /usr/lib/x86_64-linux-gnu/hdf5/serial /usr/lib/x86_64-linux-gnu /usr/local/lib /usr/local/lib64 /usr/lib; do
+    if [ -f ${lib}/lib${LIBHDF5}.so ]; then export LIBDIR_HDF5=${lib}; break; fi
+  done
+  if [ -z "${INCDIR_HDF5}" ] || [ -z "${LIBDIR_HDF5}" ]; then
+    echo "WARNING: HDF5 library not found (hdf5.h / lib${LIBHDF5}.so)."
+    echo " - Module INPUT_HDF5 will not be built. Install hdf5-devel or set HDF5_DIR."
+    export BUILD_HDF5=0
+  fi
+fi
+
 echo "SeaSeis ${VERSION} source root directory:  '${CSEISDIR_SRCROOT}'"
 echo "SeaSeis ${VERSION} obj/lib/bin root dir:   '${CSEISDIR}'"
 echo "SeaSeis ${VERSION} library directory:      '${LIBDIR}'"
 if [ ${BUILD_FFTW} -eq 1 ]; then
   echo "FFTW library:      '${LIBDIR_FFTW}/lib${LIBFFTW}.so'"
+fi
+if [ ${BUILD_HDF5} -eq 1 ]; then
+  echo "HDF5 library:      '${LIBDIR_HDF5}/lib${LIBHDF5}.so'  (include: '${INCDIR_HDF5}')"
 fi
 
 #********************************************************************************

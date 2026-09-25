@@ -55,6 +55,7 @@
   INPUT               1.0
   INPUT_ASCII         1.0
   INPUT_CREATE        1.0
+  INPUT_HDF5          1.0
   INPUT_INTERPOLATE   1.0
   INPUT_RSF           1.0
   INPUT_SEGY          1.0
