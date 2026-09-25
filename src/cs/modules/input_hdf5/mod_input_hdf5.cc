@@ -42,6 +42,7 @@ namespace mod_input_hdf5 {
     double  time_s;          // start time, seconds since 1970 (UTC); < 0 if not available
     std::vector<double> recX, recY, elev;
     std::vector<std::string> sensorId;
+    std::vector<double> chanNumber;   // optional /header/channel_number (written by OUTPUT_HDF5)
   };
 
   struct VariableStruct {
@@ -248,6 +249,8 @@ void init_mod_input_hdf5_( csParamManager* param, csInitPhaseEnv* env, csLogWrit
     if( !readNumbers( fid, dsDt, v ) || v.empty() || v[0] <= 0 ) writer->error("Cannot read sample interval '%s' from file '%s'.", dsDt.c_str(), f.name.c_str());
     f.dt_s = v[0];
     f.time_s = ( readNumbers( fid, dsTime, v ) && !v.empty() ) ? v[0] : -1.0;
+    std::string dsChanNum = dsDt.substr( 0, dsDt.rfind('/') ) + "/channel_number";
+    if( !readNumbers( fid, dsChanNum, f.chanNumber ) || f.chanNumber.size() != f.nChan ) f.chanNumber.clear();
 
     readNumbers( fid, grpMeta + "/REC_X", f.recX );
     readNumbers( fid, grpMeta + "/REC_Y", f.recY );
@@ -370,7 +373,7 @@ void exec_mod_input_hdf5_(
   vars->traceCounter += 1;
   trcHdr->setIntValue( vars->hdrId_trcno, vars->traceCounter );
   trcHdr->setIntValue( vars->hdrId_fileno, vars->fileIndex+1 );
-  trcHdr->setIntValue( vars->hdrId_chan, ichan+1 );
+  trcHdr->setIntValue( vars->hdrId_chan, f.chanNumber.empty() ? ichan+1 : (int)f.chanNumber[ichan] );
   trcHdr->setIntValue( vars->hdrId_rec_index, (int)irec+1 );
   if( f.recX.size() == f.nRec ) trcHdr->setDoubleValue( vars->hdrId_rec_x, f.recX[irec] );
   if( f.recY.size() == f.nRec ) trcHdr->setDoubleValue( vars->hdrId_rec_y, f.recY[irec] );
@@ -440,6 +443,7 @@ void params_mod_input_hdf5_( csParamDef* pdef ) {
   pdef->addDoc("Default layout: /data [receiver][channel][sample] float, /header/dt [s], /header/time [s since 1970, UTC],");
   pdef->addDoc("/metadata/REC_X, /metadata/REC_Y, /metadata/elevation, /metadata/sensor_id (e.g. ..._RID116117011.P26774).");
   pdef->addDoc("From the digits after 'RID': rec_line = digits 1-4, rcv = digits 5-8, node = all digits (if <= 9 digits).");
+  pdef->addDoc("Header chan = channel index (1, 2, ...), or the value in /header/channel_number if present (files written by OUTPUT_HDF5).");
   pdef->addDoc("Several files are read one after the other (all must have the same number of samples, channels and sample interval).");
 
   pdef->addParam( "filename", "Input HDF5 file name(s)", NUM_VALUES_VARIABLE, "Specify several file names on one line, or use several 'filename' lines" );

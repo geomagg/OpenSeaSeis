@@ -73,6 +73,7 @@
   OVERLAP             1.0
   OUTPUT              1.0
   OUTPUT_ASCII        1.0
+  OUTPUT_HDF5         1.0
   OUTPUT_RSF          1.0
   OUTPUT_SEGY         1.0
   P190                1.0
