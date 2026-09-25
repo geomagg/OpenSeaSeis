@@ -2,3 +2,4 @@
 # Para adicionar um plugin: crie a classe em java/src/SeaView/cseis/plugins/ e liste aqui.
 cseis.plugins.csPanelInfoPlugin
 cseis.plugins.csExportNpyPlugin
+cseis.plugins.csSpectrogramPlugin

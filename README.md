@@ -2,6 +2,7 @@
 
 - SeaView **Plugins** menu: add a class in `java/src/SeaView/cseis/plugins/`, list it in
   `java/src/SeaView/cseis/resources/seaview_plugins.txt`, then run `./make_java.sh` and `./make_seaseis.sh`.
+  Included: panel info, export to NumPy, and **Spectrogram** (Ctrl+Shift+S, then left-click a trace: STFT with Hann window, dB, linear/log frequency, PNG export).
   Examples: panel statistics (Ctrl+Shift+I) and NumPy export (Ctrl+Shift+E).
 - `csJNIlib` is loaded through `cseis.jni.csNativeLibrary`, which searches every `java.library.path` entry.
 - `src/cs/jni`: fixed `GetMethodID` failure checks, which modern GCC rejects.
