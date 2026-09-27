@@ -1,0 +1,6 @@
+# Read a SEISPAK file and write it back as SEISPAK (int16) - round trip
+$INPUT_SEISPAK
+ filename    TMIG
+$OUTPUT_SEISPAK
+ filename    TMIG_copy
+ format      int16
