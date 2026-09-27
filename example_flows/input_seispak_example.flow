@@ -1,0 +1,9 @@
+# Read a SEISPAK (Texaco ice-pak) file and write it out as IEEE SEG-Y
+$INPUT_SEISPAK
+ filename    TMIG
+ byte_order  auto
+$HDR_PRINT
+ header      trcno spk_rec spk_trc
+$OUTPUT_SEGY
+ filename    TMIG_from_seispak.sgy
+ data_format ieee

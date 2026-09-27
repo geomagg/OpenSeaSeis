@@ -60,6 +60,7 @@
   INPUT_RSF           1.0
   INPUT_SEGY          1.0
   INPUT_SEGD          1.0
+  INPUT_SEISPAK       1.0
   INPUT_SINEWAVE      1.0
   KILL                1.0
   KILL_ENS            1.0
