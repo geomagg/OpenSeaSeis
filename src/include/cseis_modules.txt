@@ -90,6 +90,7 @@
   RESEQUENCE          1.0
   RMS                 1.0
   ROTATE              1.0
+  SPK_AGC             1.0
   SCALING             1.0
   SELECT              1.0
   SELECT_TIME         1.0
