@@ -1,0 +1,8 @@
+# AGC do SEISPAK (rotina Fortran xagc) aplicado a um arquivo SEISPAK
+$INPUT_SEISPAK
+ filename    TMIG
+$SPK_AGC
+ window      500
+ ampmax      1000
+$OUTPUT_SEISPAK
+ filename    TMIG_agc
