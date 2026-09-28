@@ -93,6 +93,7 @@
   SPK_AGC             1.0
   SPK_FILT            1.0
   SPK_DECON           1.0
+  SPK_DVSSYN3D        1.0
   SPK_DVSMIG2D        1.0
   SPK_VXT2ONL         1.0
   SCALING             1.0
