@@ -1,0 +1,23 @@
+# Migracao 2D do SEISPAK (DVSMIG) - exemplos
+# 1) Migracao em tempo, PSPI, velocidade por tabela (pares velocidade - profundidade)
+$INPUT_SEISPAK
+ filename    TMIG
+$SPK_DVSMIG2D
+ apx         7                  # 1 phase shift, 4/5 45 graus x-w, 6/7 PSPI, >=11 PSPI multi-velocidade
+ rfc         no                 # no = tempo, yes = profundidade
+ dx          25                 # distancia entre CDPs (DDD)
+ frq1        5
+ frq2        50
+ vxt         1    1500 1000   2000 2000   2800 4000   3500 9000
+ vxt         450  1550 1000   2100 2000   2900 4000   3500 9000
+$OUTPUT_SEISPAK
+ filename    TMIG_mig
+#
+# 2) Migracao em profundidade com arquivo SEISPAK de v(z) (como VEL -3 / ONLVELS):
+#$SPK_DVSMIG2D
+# apx         7
+# rfc         yes
+# dx          25
+# ddz         10
+# nnz         801
+# vel_file    VELZ
