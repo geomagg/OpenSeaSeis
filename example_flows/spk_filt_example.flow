@@ -1,0 +1,7 @@
+# Filtro trapezoidal do SEISPAK (xxfilt, Fortran + FFTPACK)
+$INPUT_SEISPAK
+ filename    TMIG
+$SPK_FILT
+ freq        5  10  30  40
+$OUTPUT_SEISPAK
+ filename    TMIG_filt
