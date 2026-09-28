@@ -57,6 +57,7 @@ namespace mod_spk_dvsmig2d {
     std::vector<VelFunc> vxt;   // velocity functions
     bool  velFromFile;
     std::string velFile;
+    bool  outputVelocity;       // QC: output velocity model instead of migration
     csTraceGather* gather;
   };
 
@@ -144,6 +145,7 @@ void init_mod_spk_dvsmig2d_( csParamManager* param, csInitPhaseEnv* env, csLogWr
   vars->ddz  = 0.0f;
   vars->dx   = 0.0f;
   vars->velFromFile = false;
+  vars->outputVelocity = false;
   vars->gather = NULL;
 
   if( param->exists("apx") )  param->getFloat( "apx", &vars->apx );
@@ -160,6 +162,11 @@ void init_mod_spk_dvsmig2d_( csParamManager* param, csInitPhaseEnv* env, csLogWr
   if( param->exists("ddz") )  param->getFloat( "ddz", &vars->ddz );
   if( param->exists("nnz") )  param->getInt( "nnz", &vars->nnz );
   if( param->exists("oty") )  param->getFloat( "oty", &vars->oty );
+  if( param->exists("output") ) {
+    param->getString( "output", &text );
+    if( !text.compare("velocity") ) vars->outputVelocity = true;
+    else if( text.compare("migration") ) writer->error("Unknown option for 'output': %s", text.c_str());
+  }
 
   float a = vars->apx;
   bool apxOK = ( a == 1.0f || a == 4.0f || a == 5.0f || a == 6.0f || a == 7.0f || a >= 11.0f );
@@ -252,6 +259,7 @@ void init_mod_spk_dvsmig2d_( csParamManager* param, csInitPhaseEnv* env, csLogWr
   else writer->line("  NNZ: %d time samples", vars->nnz);
   if( vars->velFromFile ) writer->line("  Velocity file: %s", vars->velFile.c_str());
   else writer->line("  Velocity functions (VXT): %d", (int)vars->vxt.size());
+  if( vars->outputVelocity ) writer->line("  OUTPUT VELOCITY: the velocity model used by the migration is output instead of the migrated section");
 }
 
 //*************************************************************************************************
@@ -296,7 +304,16 @@ void exec_mod_spk_dvsmig2d_(
     std::vector<float> vdat;
     std::string err = readSeispak( vars->velFile, &ntrV, &ntV, &dzv, &vdat );
     if( !err.empty() ) writer->error("Velocity file '%s': %s", vars->velFile.c_str(), err.c_str());
-    writer->line("  Velocity file: %d traces, %d samples, depth step %f", ntrV, ntV, dzv);
+    writer->line("  Velocity file: %d traces, %d samples, depth step %f (max. depth %f)", ntrV, ntV, dzv, (ntV-1)*dzv);
+    writer->line("  Data: %d traces. Data trace k uses velocity trace k%+d", nx, ibeta);
+    if( ntrV != nx ) {
+      writer->warning("Velocity file has %d traces but the data has %d traces. Velocities are linked by trace order: "
+                      "data trace k uses velocity trace k+OTY (limited to 1..%d).", ntrV, nx, ntrV);
+    }
+    float zmaxMig = vars->irfc ? (vars->nnz-1)*vars->ddz : -1.0f;
+    if( zmaxMig > (ntV-1)*dzv ) {
+      writer->warning("Migration goes to depth %f but the velocity file only to %f: the last velocity is extended below", zmaxMig, (ntV-1)*dzv);
+    }
     std::vector<float> xx( 2*ntV + 4 );
     for( int k = 0; k < nx; k++ ) {
       int ix = k + 1 + ibeta;
@@ -314,6 +331,11 @@ void exec_mod_spk_dvsmig2d_(
   else {
     // Velocity at each VXT location, then linear interpolation between locations
     int nf = (int)vars->vxt.size();
+    for( int i = 0; i < nf; i++ ) {
+      if( vars->vxt[i].trace < 1 || vars->vxt[i].trace > nx ) {
+        writer->warning("VXT location at trace %d is outside the data (1..%d)", vars->vxt[i].trace, nx);
+      }
+    }
     std::vector< std::vector<float> > ef( nf, std::vector<float>(nz) );
     for( int i = 0; i < nf; i++ ) {
       VelFunc& f = vars->vxt[i];
@@ -341,6 +363,18 @@ void exec_mod_spk_dvsmig2d_(
   //--------------------------------------------------------------
   int nnz = vars->nnz;
   std::vector<float> out( (size_t)nnz*nx, 0.0f );
+  if( vars->outputVelocity ) {
+    // QC: velocity of each downward-continuation step, repeated on its ITZR output samples
+    for( int k = 0; k < nx; k++ ) {
+      for( int m = 0; m < nnz; m++ ) {
+        int step = m / vars->itzr;
+        if( step >= nz ) step = nz-1;
+        out[(size_t)k*nnz + m] = vxz[(size_t)k*nz + step];
+      }
+    }
+    writer->line("  Output: velocity model (no migration)");
+  }
+  else {
   int info[6] = {0,0,0,0,0,0};
   int ierr = 0;
   float frq2 = vars->frq2;
@@ -351,6 +385,7 @@ void exec_mod_spk_dvsmig2d_(
                info[0], info[1], info[2], info[3], info[4], info[5]);
   if( ierr == 1 ) writer->error("No frequencies to migrate between FRQ1 and FRQ2");
   if( ierr == 2 ) writer->error("Not enough memory for migration (%d MB)", info[5]);
+  }
 
   //--------------------------------------------------------------
   // Output: migrated traces with the headers of the input traces
@@ -415,6 +450,11 @@ void params_mod_spk_dvsmig2d_( csParamDef* pdef ) {
   pdef->addValue( "depth", VALTYPE_OPTION );
   pdef->addOption( "depth", "Depth of layer bottom (as in SEISPAK)" );
   pdef->addOption( "time", "Two-way time of layer bottom [ms], converted to depth with the interval velocities" );
+
+  pdef->addParam( "output", "What to output", NUM_VALUES_FIXED );
+  pdef->addValue( "migration", VALTYPE_OPTION );
+  pdef->addOption( "migration", "Migrated section" );
+  pdef->addOption( "velocity", "QC: interval velocity used in each downward-continuation step, on the output time/depth axis" );
 
   pdef->addParam( "vel_file", "SEISPAK file with interval velocity v(z), one trace per location", NUM_VALUES_FIXED,
                   "As option VEL -3 (ONLVELS) of DVSMIG: the sample interval of the file is the depth step" );
