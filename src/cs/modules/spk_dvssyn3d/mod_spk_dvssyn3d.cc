@@ -168,7 +168,12 @@ void init_mod_spk_dvssyn3d_( csParamManager* param, csInitPhaseEnv* env, csLogWr
   bool is2D = ( vars->ny == 1 );
   bool apxOK = is2D ? ( a == 1.0f || a == 4.0f || a == 5.0f || a == 6.0f || a == 7.0f || a == 10.0f || a >= 11.0f )
                     : ( a == 4.0f || a == 5.0f || a == 6.0f || a == 7.0f || a >= 11.0f );
-  if( !apxOK ) writer->error("APX = %g not supported for %s modelling", a, is2D ? "2D" : "3D");
+  if( !apxOK ) {
+    // text built first: error(text, float, char*) would pick the overload error(module, index, text, ...)
+    char msg[256];
+    snprintf( msg, sizeof(msg), "APX = %g not supported for %s modelling", a, is2D ? "2D" : "3D" );
+    writer->error( "%s", msg );
+  }
   if( a >= 11.0f && (int)lrintf(a-10.0f) < 2 ) writer->error("APX >= 11 requires at least 2 velocities (APX >= 12)");
   if( !is2D && vars->dy <= 0.0f ) writer->warning("DY not given: DY = DX used");
 
