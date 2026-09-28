@@ -1,0 +1,14 @@
+# Deconvolucao preditiva do SEISPAK (JHHDCON), duas janelas
+$INPUT_SEISPAK
+ filename    TMIG
+$SPK_DECON
+ mode        2                 # gap em ms
+ stabilize   10
+ stm         0      2000       # zona de aplicacao de cada janela [ms]
+ etm         2400   0          # 0 = fim do traco
+ vel         0      0
+ flngth      160    200        # comprimento do filtro [ms]
+ gap         8      8          # gap [ms]
+ dwindow     200 2200   1800 7000
+$OUTPUT_SEISPAK
+ filename    TMIG_decon
