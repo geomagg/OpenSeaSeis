@@ -21,3 +21,15 @@ $OUTPUT_SEISPAK
 # ddz         10
 # nnz         801
 # vel_file    VELZ
+#
+# 3) Velocidade de um arquivo VXT do SEISPAK (lista de horizontes, como no jobdeck do DVSMIG).
+#    Para modelos 3D, vxt_line escolhe a linha y. Use 'output velocity' para conferir o modelo.
+#$SPK_DVSMIG2D
+# apx         7
+# rfc         yes
+# dx          25
+# ddz         10
+# nnz         501
+# vxt_file    geovxts
+# vxt_line    1
+# output      velocity

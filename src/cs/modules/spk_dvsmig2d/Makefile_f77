@@ -4,7 +4,7 @@ MODDIR    = $(SRCDIR)/cs/modules/$(MODULE_NAME)
 MODULE    = $(MODDIR)/mod_$(MODULE_NAME).cc
 OBJS      = $(OBJDIR)/mod_$(MODULE_NAME).o
 F77DIR    = $(MODDIR)/fortran
-OBJS_F77  = $(OBJDIR)/spkmig.o $(OBJDIR)/spkmig_dvslib.o $(OBJDIR)/spkmig_dvsmig.o
+OBJS_F77  = $(OBJDIR)/spkmig.o $(OBJDIR)/spkmig_dvslib.o $(OBJDIR)/spkmig_dvsmig.o $(OBJDIR)/spkmig_vevents.o
 LIB_v1.0  = libmod_$(MODULE_NAME).so.1.0
 
 # -std=legacy: codigo Fortran 77 antigo (mesmo vetor passado como real e complexo)
@@ -33,6 +33,9 @@ $(OBJDIR)/spkmig_dvslib.o: $(F77DIR)/dvslib_mig.f
 
 $(OBJDIR)/spkmig_dvsmig.o: $(F77DIR)/dvsmig_sub.f
 	$(F77) -c $(F77_LEGACY) $(F77DIR)/dvsmig_sub.f -o $(OBJDIR)/spkmig_dvsmig.o
+
+$(OBJDIR)/spkmig_vevents.o: $(F77DIR)/vevents_mig.f
+	$(F77) -c $(F77_LEGACY) $(F77DIR)/vevents_mig.f -o $(OBJDIR)/spkmig_vevents.o
 
 $(LIBDIR)/$(LIB_v1.0): $(OBJS) $(OBJS_F77)
 	$(CPP) -fPIC -shared -Wl,-$(SONAME),$(LIB_v1.0) -Wl,-rpath,$(LIBDIR) -o $(LIBDIR)/$(LIB_v1.0) $(OBJS) $(OBJS_F77) -L$(LIBDIR) -lc -lgeolib -lcseis_system -lgfortran

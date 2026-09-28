@@ -30,6 +30,7 @@ extern "C" {
                   float* ddz, float* dx, float* apx, int* irfc, float* frq1, float* frq2,
                   float* out, int* info, int* ierr );
   void spkvcol_( float* xx, int* np, int* nz, int* itzr, float* ddz, float* dt, int* irfc, float* e );
+  void spkvxt_( float* vel, float* dx, int* nxv, int* nyv, int* np, float* afit, float* ee, float* x, float* bfit, float* xx );
 }
 
 namespace mod_spk_dvsmig2d {
@@ -58,6 +59,9 @@ namespace mod_spk_dvsmig2d {
     bool  velFromFile;
     std::string velFile;
     bool  outputVelocity;       // QC: output velocity model instead of migration
+    bool  velFromVxtFile;       // VXT horizon list (SEISPAK jobdeck format)
+    std::vector<float> vxtAfit; // dense velocity functions from VEVENTS
+    int   vxtNx, vxtNp;
     csTraceGather* gather;
   };
 
@@ -146,6 +150,8 @@ void init_mod_spk_dvsmig2d_( csParamManager* param, csInitPhaseEnv* env, csLogWr
   vars->dx   = 0.0f;
   vars->velFromFile = false;
   vars->outputVelocity = false;
+  vars->velFromVxtFile = false;
+  vars->vxtNx = 0; vars->vxtNp = 0;
   vars->gather = NULL;
 
   if( param->exists("apx") )  param->getFloat( "apx", &vars->apx );
@@ -196,7 +202,77 @@ void init_mod_spk_dvsmig2d_( csParamManager* param, csInitPhaseEnv* env, csLogWr
   //---------------------------------------------
   // Velocities
   int nLines = param->getNumLines( "vxt" );
-  if( param->exists("vel_file") ) {
+  int nSources = ( nLines > 0 ? 1 : 0 ) + ( param->exists("vel_file") ? 1 : 0 ) + ( param->exists("vxt_file") ? 1 : 0 );
+  if( nSources > 1 ) writer->error("Specify only one velocity source: 'vxt', 'vxt_file' or 'vel_file'");
+  if( param->exists("vxt_file") ) {
+    std::string fname;
+    param->getString( "vxt_file", &fname );
+    vars->velFromVxtFile = true;
+    float yLine = -1.0f;
+    if( param->exists("vxt_line") ) param->getFloat( "vxt_line", &yLine );
+    //--- read numbers after the keyword VXT (or VEL); if no keyword, the whole file
+    FILE* fp = fopen( fname.c_str(), "r" );
+    if( fp == NULL ) writer->error("Cannot open VXT file '%s'", fname.c_str());
+    std::vector<std::string> tok;
+    char word[256];
+    while( fscanf( fp, "%255s", word ) == 1 ) tok.push_back( word );
+    fclose( fp );
+    size_t start = 0;
+    for( size_t i = 0; i < tok.size(); i++ ) {
+      std::string t = tok[i];
+      for( size_t c = 0; c < t.size(); c++ ) t[c] = (char)tolower(t[c]);
+      if( t == "vxt" || t == "vel" ) { start = i+1; break; }
+    }
+    std::vector<float> v;
+    for( size_t i = start; i < tok.size(); i++ ) {
+      char* end = NULL;
+      float f = strtof( tok[i].c_str(), &end );
+      if( end == tok[i].c_str() || *end != 0 ) break;
+      v.push_back( f );
+    }
+    if( v.size() < 5 ) writer->error("VXT file '%s': no velocity list found", fname.c_str());
+    //--- split into y-line groups: [code] [negative limits] y1 <horizons...> 0 y2 <horizons...> 0 ...
+    size_t pos = 1;
+    std::vector<float> lead;
+    while( pos < v.size() && v[pos] < 0.0f ) lead.push_back( v[pos++] );
+    std::vector<float> ys;
+    std::vector< std::vector<float> > bodies;
+    while( pos < v.size() ) {
+      float y = v[pos++];
+      size_t s0 = pos;
+      while( pos+1 < v.size() && !( v[pos] <= 0.5f && v[pos+1] <= 0.5f ) ) pos++;
+      bodies.push_back( std::vector<float>( v.begin()+s0, v.begin()+std::min(pos+1, v.size()) ) );
+      ys.push_back( y );
+      pos += 2;
+    }
+    int ig = 0;
+    if( yLine >= 0.0f ) {
+      ig = -1;
+      for( size_t i = 0; i < ys.size(); i++ ) if( fabs( ys[i] - yLine ) < 0.01f ) ig = (int)i;
+      if( ig < 0 ) writer->error("VXT file: line y=%g not found (%d lines, y = %g ... %g)", yLine, (int)ys.size(), ys.front(), ys.back());
+    }
+    //--- 2D list for VEVENTS: code, limits, 1, horizons of the selected line, 0
+    std::vector<float> list;
+    list.push_back( v[0] );
+    list.insert( list.end(), lead.begin(), lead.end() );
+    list.push_back( 1.0f );
+    list.insert( list.end(), bodies[ig].begin(), bodies[ig].end() );
+    list.push_back( 0.0f );
+    size_t m = list.size() + 60000;
+    list.resize( m, 0.0f );
+    std::vector<float> ee( m ), x( 20*m + 100000 ), xx( 10001 );
+    size_t nafit = 3 + (size_t)10001*203;   // up to 10000 DPN and 100 horizons
+    vars->vxtAfit.assign( nafit, 0.0f );
+    std::vector<float> bfit( nafit );
+    int nxv = 0, nyv = 0, np = 0;
+    float ddd = vars->dx;
+    spkvxt_( &list[0], &ddd, &nxv, &nyv, &np, &vars->vxtAfit[0], &ee[0], &x[0], &bfit[0], &xx[0] );
+    if( nxv <= 0 || np <= 0 || nxv > 10000 ) writer->error("VXT file '%s': could not build velocity functions (nx=%d, events=%d)", fname.c_str(), nxv, np);
+    vars->vxtNx = nxv; vars->vxtNp = np;
+    writer->line("  VXT file: %s  (%d y-lines in file, using y = %g)", fname.c_str(), (int)ys.size(), ys[ig]);
+    writer->line("  VXT code %g, %d horizons, %d locations (DPN)", v[0], np, nxv);
+  }
+  else if( param->exists("vel_file") ) {
     param->getString( "vel_file", &vars->velFile );
     vars->velFromFile = true;
     if( nLines > 0 ) writer->error("Specify either 'vel_file' or 'vxt', not both");
@@ -239,7 +315,7 @@ void init_mod_spk_dvsmig2d_( csParamManager* param, csInitPhaseEnv* env, csLogWr
     }
   }
   else {
-    writer->error("Velocity required: use 'vxt' (pairs velocity-depth per trace) or 'vel_file' (SEISPAK file with v(z) traces)");
+    if( !vars->velFromVxtFile ) writer->error("Velocity required: use 'vxt' (pairs velocity-depth per trace), 'vxt_file' (SEISPAK VXT list) or 'vel_file' (SEISPAK file with v(z) traces)");
   }
 
   //---------------------------------------------
@@ -257,7 +333,8 @@ void init_mod_spk_dvsmig2d_( csParamManager* param, csInitPhaseEnv* env, csLogWr
   writer->line("  DX: %f   ITZR: %d   FRQ1/FRQ2: %f %f Hz   OTY: %f", vars->dx, vars->itzr, vars->frq1, vars->frq2, vars->oty);
   if( vars->irfc ) writer->line("  DDZ: %f   NNZ: %d  (max. depth %f)", vars->ddz, vars->nnz, (vars->nnz-1)*vars->ddz);
   else writer->line("  NNZ: %d time samples", vars->nnz);
-  if( vars->velFromFile ) writer->line("  Velocity file: %s", vars->velFile.c_str());
+  if( vars->velFromVxtFile ) {}
+  else if( vars->velFromFile ) writer->line("  Velocity file: %s", vars->velFile.c_str());
   else writer->line("  Velocity functions (VXT): %d", (int)vars->vxt.size());
   if( vars->outputVelocity ) writer->line("  OUTPUT VELOCITY: the velocity model used by the migration is output instead of the migrated section");
 }
@@ -299,7 +376,19 @@ void exec_mod_spk_dvsmig2d_(
   std::vector<float> vxz( (size_t)nz*nx );
   std::vector<float> e( nz );
   int ibeta = (int)lrintf( vars->oty );   // OTY: ix = k + beta (xvel3d)
-  if( vars->velFromFile ) {
+  if( vars->velFromVxtFile ) {
+    int np = vars->vxtNp, nxv = vars->vxtNx, nw = 2*np+3;
+    writer->line("  Data: %d traces. Data trace k uses VXT location (DPN) k%+d", nx, ibeta);
+    if( nxv != nx ) writer->warning("VXT has %d locations (DPN) but the data has %d traces. Velocities are linked by trace order (DPN = k+OTY, limited to 1..%d).", nxv, nx, nxv);
+    for( int k = 0; k < nx; k++ ) {
+      int ix = k + 1 + ibeta;
+      if( ix < 1 ) ix = 1;
+      if( ix > nxv ) ix = nxv;
+      float* xx = &vars->vxtAfit[3 + (size_t)(ix-1)*nw];
+      spkvcol_( xx, &np, &nz, &vars->itzr, &vars->ddz, &dt, &vars->irfc, &vxz[(size_t)k*nz] );
+    }
+  }
+  else if( vars->velFromFile ) {
     int ntrV, ntV; float dzv;
     std::vector<float> vdat;
     std::string err = readSeispak( vars->velFile, &ntrV, &ntV, &dzv, &vdat );
@@ -455,6 +544,15 @@ void params_mod_spk_dvsmig2d_( csParamDef* pdef ) {
   pdef->addValue( "migration", VALTYPE_OPTION );
   pdef->addOption( "migration", "Migrated section" );
   pdef->addOption( "velocity", "QC: interval velocity used in each downward-continuation step, on the output time/depth axis" );
+
+  pdef->addParam( "vxt_file", "File with SEISPAK VXT velocity list (horizons), as in the DVSMIG jobdeck", NUM_VALUES_FIXED,
+                  "Numbers after the keyword VXT (or the whole file): code, then for each y-line: y, horizons as triplets "
+                  "(velocity, DPN, depth or time) each ended by a value <= 0.5, and 0 at the end of the line. "
+                  "Read by the original VEVENTS routine. DPN = trace number." );
+  pdef->addValue( "", VALTYPE_STRING, "File name" );
+
+  pdef->addParam( "vxt_line", "y-line of the VXT file to use (3D models)", NUM_VALUES_FIXED, "Default: first line in the file" );
+  pdef->addValue( "", VALTYPE_NUMBER, "y value as written in the file" );
 
   pdef->addParam( "vel_file", "SEISPAK file with interval velocity v(z), one trace per location", NUM_VALUES_FIXED,
                   "As option VEL -3 (ONLVELS) of DVSMIG: the sample interval of the file is the depth step" );

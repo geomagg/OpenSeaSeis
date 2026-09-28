@@ -249,3 +249,22 @@ c     SEASEIS: evita laco infinito se todas as velocidades forem < eps
 101   continue
       return
       end
+c
+      SUBROUTINE SPKVXT(VEL,DX,NXV,NYV,NP,AFIT,EE,X,BFIT,XX)
+c     Lista VXT (horizontes) -> funcoes de velocidade densas, como no
+c     ramo VEL(1) > 0 de xvel3d: duas chamadas de VEVENTS.
+c     Saida em AFIT: afit(1..3) = nxv, nyv, np; depois, para cada
+c     posicao (iy,ix), 2*np+3 palavras: iy, ix, pares (v, z).
+      REAL VEL(*),AFIT(*),EE(*),X(*),BFIT(*),XX(*)
+      CHARACTER*4 VINT
+      NXX=0
+      NY=1
+      NT=0
+      NWDS=50000
+      CALL VEVENTS(EE,VEL,XX,X,NXX,NY,NT,VINT,NWDS,AFIT,BFIT,DX)
+      CALL VEVENTS(EE,VEL,XX,X,NXX,NY,NT,VINT,NWDS,AFIT,BFIT,DX)
+      NXV=NINT(AFIT(1))
+      NYV=NINT(AFIT(2))
+      NP=NINT(AFIT(3))
+      RETURN
+      END
