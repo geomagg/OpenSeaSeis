@@ -1,0 +1,10 @@
+# Converte a lista de velocidades VXT do SEISPAK (horizontes) em arquivo ONL de v(z)
+# (um traco por DPN, amostrado em profundidade), para usar em SPK_DVSMIG2D 'vel_file'
+$SPK_VXT2ONL
+ vxt_file    geovxts
+ vxt_line    1          # linha y (modelos 3D); padrao = primeira linha do arquivo
+ ddz         10
+ nnz         501
+$OUTPUT_SEISPAK
+ filename    VELONL
+ format      float
