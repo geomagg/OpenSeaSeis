@@ -1,0 +1,44 @@
+MODULE_NAME = spk_dvsmig3d
+
+MODDIR    = $(SRCDIR)/cs/modules/$(MODULE_NAME)
+MODULE    = $(MODDIR)/mod_$(MODULE_NAME).cc
+OBJS      = $(OBJDIR)/mod_$(MODULE_NAME).o
+F77DIR    = $(MODDIR)/fortran
+OBJS_F77  = $(OBJDIR)/spkmig3d.o $(OBJDIR)/spkmig3d_dvslib.o $(OBJDIR)/spkmig3d_sub.o $(OBJDIR)/spkmig3d_vxt.o $(OBJDIR)/spkmig3d_cfft.o
+LIB_v1.0  = libmod_$(MODULE_NAME).so.1.0
+
+# -std=legacy: codigo Fortran 77 antigo (mesmo vetor passado como real e complexo)
+F77_LEGACY = $(F77_FLAGS) -std=legacy -fPIC
+
+INCS =  -I"$(SRCDIR)/cs/geolib"  -I"$(SRCDIR)/cs/system" -I"$(MODDIR)"
+
+ALL_FLAGS = $(INCS) $(COMMON_FLAGS) -fPIC
+
+default: $(OBJS_F77) $(OBJS) $(LIBDIR)/$(LIB_v1.0)
+
+clean:
+	rm -f $(OBJS) $(OBJS_F77)
+
+bleach: clean
+	rm -f $(LIBDIR)/$(LIB_v1.0)
+
+$(OBJDIR)/mod_$(MODULE_NAME).o: $(MODULE)
+	$(CPP) -c $(ALL_FLAGS) $(MODULE) -o $(OBJDIR)/mod_$(MODULE_NAME).o
+
+$(OBJDIR)/spkmig3d.o: $(F77DIR)/spkmig3d.f
+	$(F77) -c $(F77_LEGACY) $(F77DIR)/spkmig3d.f -o $(OBJDIR)/spkmig3d.o
+
+$(OBJDIR)/spkmig3d_dvslib.o: $(F77DIR)/dvslib_mig3d.f
+	$(F77) -c $(F77_LEGACY) $(F77DIR)/dvslib_mig3d.f -o $(OBJDIR)/spkmig3d_dvslib.o
+
+$(OBJDIR)/spkmig3d_sub.o: $(F77DIR)/dvsmig3d_sub.f
+	$(F77) -c $(F77_LEGACY) $(F77DIR)/dvsmig3d_sub.f -o $(OBJDIR)/spkmig3d_sub.o
+
+$(OBJDIR)/spkmig3d_vxt.o: $(F77DIR)/vxt_mig3d.f
+	$(F77) -c $(F77_LEGACY) $(F77DIR)/vxt_mig3d.f -o $(OBJDIR)/spkmig3d_vxt.o
+
+$(OBJDIR)/spkmig3d_cfft.o: $(F77DIR)/cfftpack.f
+	$(F77) -c $(F77_LEGACY) $(F77DIR)/cfftpack.f -o $(OBJDIR)/spkmig3d_cfft.o
+
+$(LIBDIR)/$(LIB_v1.0): $(OBJS) $(OBJS_F77)
+	$(CPP) -fPIC -shared -Wl,-$(SONAME),$(LIB_v1.0) -Wl,-rpath,$(LIBDIR) -o $(LIBDIR)/$(LIB_v1.0) $(OBJS) $(OBJS_F77) -L$(LIBDIR) -lc -lgeolib -lcseis_system -lgfortran
