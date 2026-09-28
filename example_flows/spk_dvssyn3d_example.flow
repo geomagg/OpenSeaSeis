@@ -1,0 +1,29 @@
+# Sintetico de afastamento nulo (refletor explosivo) do SEISPAK (DVSSYN)
+# 1) 2D (NY 1) com velocidade de uma lista VXT, gravado em SEISPAK
+$SPK_DVSSYN3D
+ nx          501
+ nt          1001
+ sr          4
+ dx          41
+ nnz         1001
+ ddz         10
+ itzr        5
+ apx         7          # 1 phase shift (2D), 4/5 45 graus x-w, 6/7 PSPI, >=11 PSPI multi-velocidade, >=13 + bordas absorventes
+ frq1        5
+ frq2        60
+ alph1       2          # refinamento do modelo em profundidade
+ vxt_file    geovxts
+$OUTPUT_SEISPAK
+ filename    SYN2D
+#
+# 2) 3D: NY > 1 e DY. Cada linha y da lista VXT e interpolada em x pelo XVEVENTS
+#    original; entre linhas y, profundidade e velocidade de cada horizonte sao
+#    interpoladas linearmente. Deixe margem no modelo em volta da area de
+#    interesse: a FFT em x e y e periodica (mergulhos fortes "dao a volta").
+#$SPK_DVSSYN3D
+# nx 501
+# ny 500
+# dy 41
+# ...
+# 3) Velocidade de arquivo ONL (v(z) por DPN, um registro por linha y):
+# vel_file   VELONL
