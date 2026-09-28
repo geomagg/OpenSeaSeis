@@ -8,6 +8,7 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include <algorithm>
 #include <sys/types.h>
 
 using namespace cseis_system;
@@ -59,6 +60,7 @@ namespace mod_spk_dvsmig2d {
     bool  velFromFile;
     std::string velFile;
     bool  outputVelocity;       // QC: output velocity model instead of migration
+    bool  lineCheck;            // stop if the input has more than one y-line (3D)
     bool  velFromVxtFile;       // VXT horizon list (SEISPAK jobdeck format)
     std::vector<float> vxtAfit; // dense velocity functions from VEVENTS
     int   vxtNx, vxtNp;
@@ -150,6 +152,7 @@ void init_mod_spk_dvsmig2d_( csParamManager* param, csInitPhaseEnv* env, csLogWr
   vars->dx   = 0.0f;
   vars->velFromFile = false;
   vars->outputVelocity = false;
+  vars->lineCheck = true;
   vars->velFromVxtFile = false;
   vars->vxtNx = 0; vars->vxtNp = 0;
   vars->gather = NULL;
@@ -172,6 +175,11 @@ void init_mod_spk_dvsmig2d_( csParamManager* param, csInitPhaseEnv* env, csLogWr
     param->getString( "output", &text );
     if( !text.compare("velocity") ) vars->outputVelocity = true;
     else if( text.compare("migration") ) writer->error("Unknown option for 'output': %s", text.c_str());
+  }
+  if( param->exists("line_check") ) {
+    param->getString( "line_check", &text );
+    if( !text.compare("no") ) vars->lineCheck = false;
+    else if( text.compare("yes") ) writer->error("Unknown option for 'line_check': %s", text.c_str());
   }
 
   float a = vars->apx;
@@ -362,6 +370,44 @@ void exec_mod_spk_dvsmig2d_(
 
   int nx = vars->gather->numTraces();
   if( nx == 0 ) return;
+
+  //--------------------------------------------------------------
+  // Protection: SPK_DVSMIG2D migrates ONE 2D line. A 3D volume (several y-lines)
+  // would be migrated as one long concatenated line.
+  if( vars->lineCheck ) {
+    std::string hname;
+    if( hdef->headerExists("row") ) hname = "row";
+    else if( hdef->headerExists("spk_rec") && hdef->headerExists("spk_trc") ) hname = "spk_rec";
+    if( !hname.empty() ) {
+      int id = hdef->headerIndex( hname );
+      int idTrc = hdef->headerExists("spk_trc") ? hdef->headerIndex("spk_trc") : -1;
+      std::vector<double> vals;
+      bool trcVaries = false;
+      double trc0 = 0.0;
+      for( int k = 0; k < nx; k++ ) {
+        csTraceHeader const* th = vars->gather->trace(k)->getTraceHeader();
+        double v = th->doubleValue( id );
+        if( std::find( vals.begin(), vals.end(), v ) == vals.end() ) vals.push_back( v );
+        if( idTrc >= 0 ) {
+          double t = th->doubleValue( idTrc );
+          if( k == 0 ) trc0 = t; else if( t != trc0 ) trcVaries = true;
+        }
+      }
+      // For 'spk_rec' (INPUT_SEISPAK): a 2D SEISPAK file has one trace per record (records = traces),
+      // a 3D file has several traces per record (record = y-line)
+      bool multi = ( vals.size() > 1 ) && ( hname == "row" || trcVaries );
+      if( multi ) {
+        std::sort( vals.begin(), vals.end() );
+        char msg[1024];
+        snprintf( msg, sizeof(msg), "Input has %d y-lines (header '%s' from %g to %g), but SPK_DVSMIG2D migrates ONE 2D line: "
+                  "all traces would be joined into a single line. Use SPK_DVSMIG3D for a 3D volume, "
+                  "or select one line before this module (e.g. $SELECT with 'header %s' and 'select <line>'). "
+                  "To skip this check use 'line_check no'.",
+                  (int)vals.size(), hname.c_str(), vals.front(), vals.back(), hname.c_str() );
+        writer->error( "%s", msg );
+      }
+    }
+  }
   int nt = vars->ntUse;
   std::vector<float> d( (size_t)nx*nt );
   for( int k = 0; k < nx; k++ ) {
@@ -544,6 +590,13 @@ void params_mod_spk_dvsmig2d_( csParamDef* pdef ) {
   pdef->addValue( "migration", VALTYPE_OPTION );
   pdef->addOption( "migration", "Migrated section" );
   pdef->addOption( "velocity", "QC: interval velocity used in each downward-continuation step, on the output time/depth axis" );
+
+  pdef->addParam( "line_check", "Stop if the input has more than one y-line", NUM_VALUES_FIXED,
+                  "Checks trace header 'row' (or 'spk_rec' with several traces per record, from INPUT_SEISPAK). "
+                  "3D data must be migrated with SPK_DVSMIG3D, or one line selected first." );
+  pdef->addValue( "yes", VALTYPE_OPTION );
+  pdef->addOption( "yes", "Stop with an error if several y-lines are found" );
+  pdef->addOption( "no", "No check: all input traces are one 2D line" );
 
   pdef->addParam( "vxt_file", "File with SEISPAK VXT velocity list (horizons), as in the DVSMIG jobdeck", NUM_VALUES_FIXED,
                   "Numbers after the keyword VXT (or the whole file): code, then for each y-line: y, horizons as triplets "
