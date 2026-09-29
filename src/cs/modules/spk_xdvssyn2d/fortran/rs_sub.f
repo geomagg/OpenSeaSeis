@@ -142,8 +142,7 @@ c   ***   multiply by vdt
       do 500 j=1,nxz
       s(j)=u(j)
 500   continue
-c     SEASEIS: xfftl2d nao veio no fonte; fftl2d (dvslib) tem a mesma chamada
-      call fftl2d(s,s(nxz+1),nz,nx,1)
+      call xfftl2d(s,s(nxz+1),nz,nx,1)
 c   ***   multiply s(kz,kx) by -(kx**2 + kz**2)
       pi=3.1415927
       dkx=2.*pi/(nx*dx) 
@@ -155,7 +154,7 @@ c   ***   multiply s(kz,kx) by -(kx**2 + kz**2)
       s((i-1)*nz+j)=-(akx**2+akz**2)*s((i-1)*nz+j)
 80    continue
 70    continue
-      call fftl2d(s,s(nxz+1),nz,nx,-1)
+      call xfftl2d(s,s(nxz+1),nz,nx,-1)
       do 700 j=1,nxz
       r(j)=v(j)*s(j)
 700   continue

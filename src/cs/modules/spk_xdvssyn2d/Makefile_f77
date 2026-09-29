@@ -4,7 +4,7 @@ MODDIR    = $(SRCDIR)/cs/modules/$(MODULE_NAME)
 MODULE    = $(MODDIR)/mod_$(MODULE_NAME).cc
 OBJS      = $(OBJDIR)/mod_$(MODULE_NAME).o
 F77DIR    = $(MODDIR)/fortran
-OBJS_F77  = $(OBJDIR)/spkrs.o $(OBJDIR)/spkrs_sub.o $(OBJDIR)/spkrs_dvslib.o $(OBJDIR)/spkrs_cfft.o
+OBJS_F77  = $(OBJDIR)/spkrs_xfftl2d.o $(OBJDIR)/spkrs.o $(OBJDIR)/spkrs_sub.o $(OBJDIR)/spkrs_dvslib.o $(OBJDIR)/spkrs_cfft.o
 LIB_v1.0  = libmod_$(MODULE_NAME).so.1.0
 
 # -std=legacy: codigo Fortran 77 antigo (mesmo vetor passado como real e complexo)
@@ -41,3 +41,6 @@ $(OBJDIR)/spkrs_cfft.o: $(F77DIR)/cfftpack.f
 
 $(LIBDIR)/$(LIB_v1.0): $(OBJS) $(OBJS_F77)
 	$(CPP) -fPIC -shared -Wl,-$(SONAME),$(LIB_v1.0) -Wl,-rpath,$(LIBDIR) -o $(LIBDIR)/$(LIB_v1.0) $(OBJS) $(OBJS_F77) -L$(LIBDIR) -lc -lgeolib -lcseis_system -lgfortran
+
+$(OBJDIR)/spkrs_xfftl2d.o: $(F77DIR)/xfftl2d.f
+	$(F77) -c $(F77_LEGACY) $(F77DIR)/xfftl2d.f -o $(OBJDIR)/spkrs_xfftl2d.o

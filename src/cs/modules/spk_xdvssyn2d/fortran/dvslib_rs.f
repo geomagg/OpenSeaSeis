@@ -426,3 +426,11 @@ C
   100 CONTINUE
       RETURN
       END
+      subroutine ctran(a,b,nr,nc) 
+      complex a(*),b(*) 
+      do 10 k=1,nc
+      do 10 i=1,nr
+      b((i-1)*nc+k)=a((k-1)*nr+i)
+10    continue
+      return
+      end 
