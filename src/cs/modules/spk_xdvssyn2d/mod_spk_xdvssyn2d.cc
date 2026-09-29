@@ -35,6 +35,7 @@ namespace mod_spk_xdvssyn2d {
     int nx, nz, nt, nx0, nz0, idp, kutta, itzr, itype, iden;
     float sr, dx, ddz, apx, raa, gam1, fs;
     int nsnap;
+    bool removeDirect;          // subtract a run in a homogeneous model (velocity/density at the source)
     int nOutTraces, nOutSamples;
     std::vector<float> vel, rho, wave, out;
     int traceCounter;
@@ -151,6 +152,7 @@ void init_mod_spk_xdvssyn2d_( csParamManager* param, csInitPhaseEnv* env, csLogW
   vars->sr = 0.0f; vars->dx = 0.0f; vars->ddz = 0.0f;
   vars->apx = 0.0f; vars->kutta = 2; vars->raa = 0.0f; vars->gam1 = 20.0f; vars->fs = 0.0f;
   vars->itzr = 10; vars->itype = 2; vars->iden = 0; vars->nsnap = 0;
+  vars->removeDirect = false;
 
   std::string text;
   if( param->exists("nx") )    param->getInt( "nx", &vars->nx );
@@ -171,6 +173,11 @@ void init_mod_spk_xdvssyn2d_( csParamManager* param, csInitPhaseEnv* env, csLogW
     param->getString( "free_surface", &text );
     if( !text.compare("yes") ) vars->fs = 1.0f;
     else if( text.compare("no") ) writer->error("Unknown option for 'free_surface': %s", text.c_str());
+  }
+  if( param->exists("direct_wave") ) {
+    param->getString( "direct_wave", &text );
+    if( !text.compare("remove") ) vars->removeDirect = true;
+    else if( text.compare("keep") ) writer->error("Unknown option for 'direct_wave': %s", text.c_str());
   }
   if( param->exists("output") ) {
     param->getString( "output", &text );
@@ -295,6 +302,7 @@ void init_mod_spk_xdvssyn2d_( csParamManager* param, csInitPhaseEnv* env, csLogW
   if( vars->itype == 1 ) writer->line("  Output: %d snapshots (every %d steps), each NX traces x NZ samples", vars->nsnap, vars->itzr);
   else if( vars->itype == 5 ) writer->line("  Output: velocity model used (no modelling)");
   else writer->line("  Output: shot record, NX traces x NT samples (first sample = time SR)");
+  if( vars->removeDirect && vars->itype != 5 ) writer->line("  Direct wave: removed (run in homogeneous model subtracted)");
 }
 
 //*************************************************************************************************
@@ -325,6 +333,21 @@ void exec_mod_spk_xdvssyn2d_(
             &vars->apx, &vars->kutta, &vars->raa, &vars->nx0, &vars->nz0, &vars->idp, &vars->gam1, &vars->fs,
             &vars->itype, &vars->itzr, &vars->wave[0], &ntw, &vars->out[0], &nout, &ierr );
     if( ierr == 2 ) writer->error("Not enough memory for the modelling grid");
+    if( vars->removeDirect && vars->itype != 5 ) {
+      // SEASEIS: second run in a homogeneous model with the velocity (and density) at the source,
+      // subtracted from the first: removes the direct wave (and the same boundary artefacts)
+      size_t isrc = (size_t)(vars->nx0-1)*vars->nz + (vars->nz0-1);
+      float vsrc = vars->vel[isrc];
+      std::vector<float> vel0( vars->vel.size(), vsrc );
+      std::vector<float> rho0( vars->rho.size(), vars->iden ? vars->rho[isrc] : 1.0f );
+      std::vector<float> out0( vars->out.size(), 0.0f );
+      writer->line("  Direct wave: second run in a homogeneous model (v = %g at the source), subtracted", vsrc);
+      spkrs_( &vel0[0], &rho0[0], &vars->iden, &vars->nx, &vars->nz, &vars->nt, &dt, &vars->dx, &vars->ddz,
+              &vars->apx, &vars->kutta, &vars->raa, &vars->nx0, &vars->nz0, &vars->idp, &vars->gam1, &vars->fs,
+              &vars->itype, &vars->itzr, &vars->wave[0], &ntw, &out0[0], &nout, &ierr );
+      if( ierr == 2 ) writer->error("Not enough memory for the modelling grid");
+      for( size_t i = 0; i < vars->out.size(); i++ ) vars->out[i] -= out0[i];
+    }
     float amax = 0.0f;
     for( size_t i = 0; i < vars->out.size(); i++ ) {
       if( !std::isfinite( vars->out[i] ) ) writer->error("Modelling diverged (NaN/Inf): reduce SR or increase KUTTA");
@@ -400,6 +423,13 @@ void params_mod_spk_xdvssyn2d_( csParamDef* pdef ) {
   pdef->addOption( "section", "Shot record at depth IDP: NX traces, NT samples (ITYPE 2)" );
   pdef->addOption( "snapshots", "Wavefield every ITZR steps: one ensemble (ffid) of NX traces x NZ depth samples per snapshot (ITYPE 1)" );
   pdef->addOption( "velocity", "Velocity grid used (ITYPE 5)" );
+  pdef->addParam( "direct_wave", "Direct wave", NUM_VALUES_FIXED,
+                  "remove: the shot is modelled again in a homogeneous model with the velocity (and density) at the source position "
+                  "and subtracted. Removes the direct wave and the boundary artefacts; exact when source and receivers are in the same "
+                  "constant-velocity layer. Doubles the run time." );
+  pdef->addValue( "keep", VALTYPE_OPTION );
+  pdef->addOption( "keep", "Keep the direct wave" );
+  pdef->addOption( "remove", "Subtract a run in a homogeneous model" );
   pdef->addParam( "itzr", "Time steps between snapshots", NUM_VALUES_FIXED );
   pdef->addValue( "10", VALTYPE_NUMBER, "ITZR" );
   pdef->addParam( "vel_file", "SEISPAK file with velocity v(z) traces (ONLVELS)", NUM_VALUES_FIXED,
