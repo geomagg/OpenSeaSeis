@@ -1,0 +1,43 @@
+MODULE_NAME = spk_xvspmig2
+
+MODDIR    = $(SRCDIR)/cs/modules/$(MODULE_NAME)
+MODULE    = $(MODDIR)/mod_$(MODULE_NAME).cc
+OBJS      = $(OBJDIR)/mod_$(MODULE_NAME).o
+F77DIR    = $(MODDIR)/fortran
+OBJS_F77  = $(OBJDIR)/spkvsp.o $(OBJDIR)/spkvsp_dvslib.o $(OBJDIR)/spkvsp_sub.o $(OBJDIR)/spkvsp_vevents.o
+LIB_v1.0  = libmod_$(MODULE_NAME).so.1.0
+
+# -std=legacy: codigo Fortran 77 antigo (mesmo vetor passado como real e complexo)
+# -fno-automatic em dvslib_vsp.f: variaveis locais estaticas, como no g77 (arriv6, cacomt2)
+F77_LEGACY = $(F77_FLAGS) -std=legacy -fPIC
+
+INCS =  -I"$(SRCDIR)/cs/geolib"  -I"$(SRCDIR)/cs/system" -I"$(MODDIR)"
+
+ALL_FLAGS = $(INCS) $(COMMON_FLAGS) -fPIC
+
+default: $(OBJS_F77) $(OBJS) $(LIBDIR)/$(LIB_v1.0)
+
+clean:
+	rm -f $(OBJS) $(OBJS_F77)
+
+bleach: clean
+	rm -f $(LIBDIR)/$(LIB_v1.0)
+
+$(OBJDIR)/mod_$(MODULE_NAME).o: $(MODULE)
+	$(CPP) -c $(ALL_FLAGS) $(MODULE) -o $(OBJDIR)/mod_$(MODULE_NAME).o
+
+$(LIBDIR)/$(LIB_v1.0): $(OBJS) $(OBJS_F77)
+	$(CPP) -fPIC -shared -Wl,-$(SONAME),$(LIB_v1.0) -Wl,-rpath,$(LIBDIR) -o $(LIBDIR)/$(LIB_v1.0) $(OBJS) $(OBJS_F77) -L$(LIBDIR) -lc -lgeolib -lcseis_system -lgfortran
+
+
+$(OBJDIR)/spkvsp.o: $(F77DIR)/spkvsp.f
+	$(F77) -c $(F77_LEGACY) $(F77DIR)/spkvsp.f -o $(OBJDIR)/spkvsp.o
+
+$(OBJDIR)/spkvsp_dvslib.o: $(F77DIR)/dvslib_vsp.f
+	$(F77) -c $(F77_LEGACY) -fno-automatic $(F77DIR)/dvslib_vsp.f -o $(OBJDIR)/spkvsp_dvslib.o
+
+$(OBJDIR)/spkvsp_sub.o: $(F77DIR)/vsp_sub.f
+	$(F77) -c $(F77_LEGACY) $(F77DIR)/vsp_sub.f -o $(OBJDIR)/spkvsp_sub.o
+
+$(OBJDIR)/spkvsp_vevents.o: $(F77DIR)/vevents_vsp.f
+	$(F77) -c $(F77_LEGACY) $(F77DIR)/vevents_vsp.f -o $(OBJDIR)/spkvsp_vevents.o
