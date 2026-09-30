@@ -97,6 +97,7 @@
   SPK_DVSMIG2D        1.0
   SPK_DVSMIG3D        1.0
   SPK_VXT2ONL         1.0
+  SPK_XDVSSYN2D       1.0
   SCALING             1.0
   SELECT              1.0
   SELECT_TIME         1.0
@@ -119,3 +120,4 @@
   TRC_MATH_ENS        1.0
   TRC_PRINT           1.0
   TRC_SPLIT           1.0
+  SPK_XVSPMIG2        1.0
