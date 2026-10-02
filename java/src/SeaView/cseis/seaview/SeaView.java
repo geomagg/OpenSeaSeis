@@ -288,6 +288,23 @@ public class SeaView extends JFrame implements csFileMenuListener {
       bundleActive.setProcessingStep( name );
     }
   }
+  /**
+   * Run a plugin (menu 'Plugins') on the active seismic pane
+   */
+  public void runPlugin( cseis.plugin.csISeaViewPlugin plugin ) {
+    csSeisPaneBundle bundleActive = (csSeisPaneBundle)myDockPaneManager.getActivePanel();
+    if( bundleActive == null ) {
+      JOptionPane.showMessageDialog( this, "Open a data set first: the plugin works on the active pane", "Plugin", JOptionPane.WARNING_MESSAGE );
+      return;
+    }
+    try {
+      plugin.run( new csPluginContext( this, bundleActive ) );
+    }
+    catch( Throwable e ) {
+      e.printStackTrace();
+      JOptionPane.showMessageDialog( this, "Error in plugin '" + plugin.getName() + "':\n" + e, "Plugin", JOptionPane.ERROR_MESSAGE );
+    }
+  }
   public void resetProcessing() {
     csSeisPaneBundle bundleActive = (csSeisPaneBundle)myDockPaneManager.getActivePanel();
     if( bundleActive != null ) {

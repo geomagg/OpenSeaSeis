@@ -241,6 +241,23 @@ public class csSeisPaneBundle extends JPanel implements csIGraphPanelListener,
       }
     });
   }
+  /**
+   * Attach a processing step given as an object (used by plugins). If a step with the same name is already
+   * attached, that one is reused (keeps its last parameters).
+   */
+  public void setProcessingStep( csIProcessing procIn ) {
+    csIProcessing proc = retrieveProcessingStep( procIn.getName() );
+    if( proc == null ) {
+      proc = procIn;
+      myProcessingSteps.add( proc );
+    }
+    proc.setActive( false );
+    setupProcessing( proc );
+  }
+  /** @return Trace buffer with the traces of this pane (used by plugins) */
+  public csISeismicTraceBuffer getSeismicTraceBuffer() {
+    return mySeismicTraceBuffer;
+  }
   public void setProcessingStep( String name ) {
     csIProcessing proc = retrieveProcessingStep( name );
     if( proc == null ) {
