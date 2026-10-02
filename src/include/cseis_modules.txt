@@ -89,6 +89,7 @@
   RESAMPLE            1.0
   RESEQUENCE          1.0
   RMS                 1.0
+  RMS_MAGG            1.0
   ROTATE              1.0
   SPK_AGC             1.0
   SPK_FILT            1.0
