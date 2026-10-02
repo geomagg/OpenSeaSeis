@@ -18,17 +18,17 @@ import javax.swing.JTextField;
 /**
  * On-screen processing step: hyperbolic moveout correction with a chosen velocity.
  * <ul>
- * <li> HMO (shift): each trace is shifted by dt = (sqrt(x^2+z^2) - z)/v, without stretch.
+ * <li> LMO (shift): each trace is shifted by dt = (sqrt(x^2+z^2) - z)/v, without stretch.
  *      Flattens the direct arrival (and its mirror/multiples) of OBN receiver gathers, z = node depth.
  *      Optionally the event is flattened at a given time instead of at its zero-offset time.
- * <li> NMO: t0 = sqrt(t^2 - x^2/v^2), with optional stretch mute.
+ * <li> HMO: t0 = sqrt(t^2 - x^2/v^2), with optional stretch mute.
  * </ul>
  * x comes from an offset header, or from the source/receiver coordinates (sou_x/sou_y, rec_x/rec_y).
  * z is a constant or a trace header (absolute value used).
  */
 public class csProcessingHMO implements csIProcessing {
-  public static final String NAME = "HMO";
-  private static final String[] MODES = { "HMO (shift, no stretch)", "NMO (hyperbolic stretch)" };
+  public static final String NAME = "LMO/HMO";
+  private static final String[] MODES = { "LMO (shift, no stretch)", "HMO (hyperbolic, t0 = sqrt(t^2-x^2/v^2))" };
 
   private csHeaderDef[] myHdrDef;
   private float mySampleInt;
@@ -43,7 +43,7 @@ public class csProcessingHMO implements csIProcessing {
   private JCheckBox myBoxInverse;
 
   // Parameters
-  private int myMode;          // 0 HMO shift, 1 NMO
+  private int myMode;          // 0 LMO shift, 1 HMO hyperbolic
   private float myVel;         // [m/s]
   private int myHdrOffset;     // -1: from coordinates
   private int myHdrSx, myHdrSy, myHdrRx, myHdrRy;
@@ -67,9 +67,9 @@ public class csProcessingHMO implements csIProcessing {
     myBoxInverse = new JCheckBox( "Inverse (undo correction)" );
     myTextVel.setToolTipText( "Velocity [m/s] (e.g. water velocity 1500)" );
     myTextOffset.setToolTipText( "<html>Offset header name, or <i>auto</i>: distance between (sou_x,sou_y) and (rec_x,rec_y)</html>" );
-    myTextDepth.setToolTipText( "<html>HMO: depth of the node/source [m], a number or a header name (e.g. rec_z)<br>0 = linear-like moveout x/v</html>" );
-    myTextFlat.setToolTipText( "<html>HMO: time [ms] where the corrected event is placed.<br>Empty = keep its zero-offset time z/v</html>" );
-    myTextMute.setToolTipText( "NMO: stretch mute [%], 0 = no mute" );
+    myTextDepth.setToolTipText( "<html>LMO: depth of the node/source [m], a number or a header name (e.g. rec_z)<br>0 = linear moveout x/v</html>" );
+    myTextFlat.setToolTipText( "<html>LMO: time [ms] where the corrected event is placed.<br>Empty = keep its zero-offset time z/v</html>" );
+    myTextMute.setToolTipText( "HMO: stretch mute [%], 0 = no mute" );
 
     myPanel = new JPanel( new GridLayout(7,2,6,4) );
     myPanel.add( new JLabel("Mode:") );                     myPanel.add( myComboMode );
@@ -77,7 +77,7 @@ public class csProcessingHMO implements csIProcessing {
     myPanel.add( new JLabel("Offset header (or auto):") );  myPanel.add( myTextOffset );
     myPanel.add( new JLabel("Depth z [m] or header:") );    myPanel.add( myTextDepth );
     myPanel.add( new JLabel("Flatten at time [ms]:") );     myPanel.add( myTextFlat );
-    myPanel.add( new JLabel("NMO stretch mute [%]:") );     myPanel.add( myTextMute );
+    myPanel.add( new JLabel("HMO stretch mute [%]:") );     myPanel.add( myTextMute );
     myPanel.add( myBoxInverse );                            myPanel.add( new JLabel("") );
   }
   private int index( String name ) {
@@ -172,7 +172,7 @@ public class csProcessingHMO implements csIProcessing {
     double w = fidx - i;
     return (float)( (1.0-w)*s[i] + w*s[i+1] );
   }
-  /** HMO: time shift without stretch */
+  /** LMO: time shift without stretch */
   public float[] hmoTrace( float[] s, int ns, float dt, double x, double z ) {
     double tEvent = 1000.0 * Math.sqrt( x*x + z*z ) / myVel;           // [ms]
     double tRef   = ( myFlatTime >= 0.0f ) ? myFlatTime : 1000.0 * z / myVel;
@@ -182,7 +182,7 @@ public class csProcessingHMO implements csIProcessing {
     for( int i = 0; i < ns; i++ ) o[i] = interp( s, ns, i + shift/dt );
     return o;
   }
-  /** NMO: t0 = sqrt(t^2 - x^2/v^2), or inverse */
+  /** HMO: t0 = sqrt(t^2 - x^2/v^2), or inverse */
   public float[] nmoTrace( float[] s, int ns, float dt, double x ) {
     double tx = 1000.0 * x / myVel;   // [ms]
     float[] o = new float[ns];

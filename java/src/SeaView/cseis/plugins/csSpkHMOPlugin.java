@@ -8,13 +8,13 @@ import cseis.seaview.plugin.csPluginContext;
 import cseis.seaview.plugin.csSeaViewPlugin;
 
 /**
- * Menu 'Plugins' entry: HMO / NMO (velocity) (hyperbolic moveout with a chosen velocity, applied on screen).
+ * Menu 'Plugins' entry: LMO / HMO (velocity) (hyperbolic moveout with a chosen velocity, applied on screen).
  * Registered in cseis/resources/seaview_plugins.txt. The computation is in cseis.plugin.csPluginHMO.
  */
 public class csSpkHMOPlugin implements csSeaViewPlugin {
   @Override
   public String getName() {
-    return "HMO / NMO (velocity)";
+    return "LMO / HMO (velocity)";
   }
   @Override
   public void install( csPluginContext context ) {

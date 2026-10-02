@@ -5,18 +5,18 @@ package cseis.plugin;
 import javax.swing.JOptionPane;
 
 /**
- * Plugin: HMO / NMO with a chosen velocity, applied on screen to the active pane.<br>
+ * Plugin: LMO / HMO with a chosen velocity, applied on screen to the active pane.<br>
  * Opens the processing dialog: change velocity (or depth, mode) and press Apply as often as needed.
  * Remove it with 'Active pane / Processing / Clear processing'.
  */
 public class csPluginHMO implements csISeaViewPlugin {
   @Override
   public String getName() {
-    return "HMO / NMO (velocity)...";
+    return "LMO / HMO (velocity)...";
   }
   @Override
   public String getDescription() {
-    return "Hyperbolic moveout correction with a chosen velocity (HMO shift for OBN direct arrival, or NMO), on screen";
+    return "Moveout with a chosen velocity, on screen: HMO (hyperbolic, t0 = sqrt(t^2-x^2/v^2)) or LMO (shift of each trace, flattens the direct arrival)";
   }
   @Override
   public void run( csIPluginContext ctx ) {
