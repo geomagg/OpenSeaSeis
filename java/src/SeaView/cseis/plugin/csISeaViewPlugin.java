@@ -3,11 +3,10 @@
 package cseis.plugin;
 
 /**
- * SeaView plugin.<br>
- * A plugin appears as one item in the SeaView menu 'Plugins' and acts on the active data pane.<br>
- * External plugins: put a jar file in the 'plugins' directory next to SeaView.jar (or in ~/.seaview/plugins).
- * The jar must contain the plugin class(es) and the file META-INF/services/cseis.plugin.csISeaViewPlugin
- * listing the full class name of each plugin, one per line. The class needs a public no-argument constructor.
+ * Tool acting on the active SeaView pane (F-X spectrum, HMO...).<br>
+ * Tools are shown in the menu 'Plugins' by small adapter classes in cseis.plugins
+ * (see cseis.plugins.csSpkFXPlugin), registered in cseis/resources/seaview_plugins.txt,
+ * and run with SeaView.runPlugin(), which gives them a csIPluginContext.
  */
 public interface csISeaViewPlugin {
   /** @return Text of the menu item */

@@ -337,7 +337,6 @@ public class csMenuBar extends JMenuBar {
     add(menuViewActive);
     add(menuTools);
     add(menuSEGY);
-    add( createPluginMenu() );
     add(menuHelp);
 
     setToolTips();
@@ -808,42 +807,6 @@ public class csMenuBar extends JMenuBar {
     boolean isSEGY = ( bundle != null && bundle.getFileFormat() == SeaView.FORMAT_SEGY );
     menuSEGYCharHdr.setEnabled(isSEGY);
     menuSEGYBinHdr.setEnabled(isSEGY);
-  }
-  /**
-   * Menu 'Plugins': built-in plugins (F-X spectrum, HMO) and plugins found in jar files in the plugin directories
-   */
-  private JMenu createPluginMenu() {
-    JMenu menuPlugins = new JMenu("Plugins");
-    final cseis.plugin.csPluginManager manager = new cseis.plugin.csPluginManager();
-    for( final cseis.plugin.csISeaViewPlugin plugin : manager.getPlugins() ) {
-      JMenuItem item = new JMenuItem( plugin.getName() );
-      item.setToolTipText( plugin.getDescription() );
-      item.addActionListener( new ActionListener() {
-        @Override
-        public void actionPerformed( ActionEvent e ) {
-          mySeaView.runPlugin( plugin );
-        }
-      });
-      menuPlugins.add( item );
-    }
-    menuPlugins.addSeparator();
-    JMenuItem itemInfo = new JMenuItem( "About plugins..." );
-    itemInfo.addActionListener( new ActionListener() {
-      @Override
-      public void actionPerformed( ActionEvent e ) {
-        StringBuilder text = new StringBuilder();
-        text.append( "Plugin directories (jar files):\n" );
-        for( java.io.File dir : cseis.plugin.csPluginManager.pluginDirectories() ) {
-          text.append( "   " + dir.getPath() + ( dir.isDirectory() ? "" : "  (does not exist)" ) + "\n" );
-        }
-        text.append( "\n" );
-        if( manager.getMessages().isEmpty() ) text.append( "No external plugins found.\n" );
-        for( String m : manager.getMessages() ) text.append( m + "\n" );
-        javax.swing.JOptionPane.showMessageDialog( mySeaView, text.toString(), "SeaView plugins", javax.swing.JOptionPane.INFORMATION_MESSAGE );
-      }
-    });
-    menuPlugins.add( itemInfo );
-    return menuPlugins;
   }
 }
 
