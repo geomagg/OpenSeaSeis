@@ -1,0 +1,33 @@
+MODULE_NAME = spk_synth
+
+MODDIR    = $(SRCDIR)/cs/modules/$(MODULE_NAME)
+MODULE    = $(MODDIR)/mod_$(MODULE_NAME).cc
+OBJS      = $(OBJDIR)/mod_$(MODULE_NAME).o
+F77DIR    = $(MODDIR)/fortran
+OBJS_F77  = $(OBJDIR)/spksynth.o
+LIB_v1.0  = libmod_$(MODULE_NAME).so.1.0
+
+# -std=legacy: codigo Fortran 77 antigo (vetores declarados S(1))
+# -fno-automatic: variaveis locais estaticas, como no compilador original do SEISPAK
+F77_LEGACY = $(F77_FLAGS) -std=legacy -fno-automatic -fPIC
+
+INCS =  -I"$(SRCDIR)/cs/geolib"  -I"$(SRCDIR)/cs/system" -I"$(MODDIR)"
+
+ALL_FLAGS = $(INCS) $(COMMON_FLAGS) -fPIC
+
+default: $(OBJS_F77) $(OBJS) $(LIBDIR)/$(LIB_v1.0)
+
+clean:
+	rm -f $(OBJS) $(OBJS_F77)
+
+bleach: clean
+	rm -f $(LIBDIR)/$(LIB_v1.0)
+
+$(OBJDIR)/mod_$(MODULE_NAME).o: $(MODULE)
+	$(CPP) -c $(ALL_FLAGS) $(MODULE) -o $(OBJDIR)/mod_$(MODULE_NAME).o
+
+$(OBJDIR)/spksynth.o: $(F77DIR)/synth.f
+	$(F77) -c $(F77_LEGACY) $(F77DIR)/synth.f -o $(OBJDIR)/spksynth.o
+
+$(LIBDIR)/$(LIB_v1.0): $(OBJS) $(OBJS_F77)
+	$(CPP) -fPIC -shared -Wl,-$(SONAME),$(LIB_v1.0) -Wl,-rpath,$(LIBDIR) -o $(LIBDIR)/$(LIB_v1.0) $(OBJS) $(OBJS_F77) -L$(LIBDIR) -lc -lgeolib -lcseis_system -lgfortran
