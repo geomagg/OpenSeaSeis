@@ -61,13 +61,15 @@ public class csProcessingHMO implements csIProcessing {
     myTextVel    = new JTextField( "1500" );
     String offDefault = ( index("offset") >= 0 ) ? "offset" : "auto";
     myTextOffset = new JTextField( offDefault );
-    myTextDepth  = new JTextField( "0" );
+    // Default depth: node water depth header if present (e.g. written by INPUT_HDF5), otherwise 0
+    String depDefault = ( index("rec_wdep") >= 0 ) ? "rec_wdep" : "0";
+    myTextDepth  = new JTextField( depDefault );
     myTextFlat   = new JTextField( "" );
     myTextMute   = new JTextField( "0" );
     myBoxInverse = new JCheckBox( "Inverse (undo correction)" );
     myTextVel.setToolTipText( "Velocity [m/s] (e.g. water velocity 1500)" );
     myTextOffset.setToolTipText( "<html>Offset header name, or <i>auto</i>: distance between (sou_x,sou_y) and (rec_x,rec_y)</html>" );
-    myTextDepth.setToolTipText( "<html>LMO: depth of the node/source [m], a number or a header name (e.g. rec_z)<br>0 = linear moveout x/v</html>" );
+    myTextDepth.setToolTipText( "<html>LMO: depth of the node/source [m], a number or a header name (e.g. rec_wdep, rec_z)<br>Default: rec_wdep if this header exists.<br>Must be the real node depth, otherwise the direct arrival is not flat.<br>0 = linear moveout x/v</html>" );
     myTextFlat.setToolTipText( "<html>LMO: time [ms] where the corrected event is placed.<br>Empty = keep its zero-offset time z/v</html>" );
     myTextMute.setToolTipText( "HMO: stretch mute [%], 0 = no mute" );
 
