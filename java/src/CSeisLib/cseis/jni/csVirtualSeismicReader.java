@@ -86,6 +86,14 @@ public class csVirtualSeismicReader implements csISeismicReader {
   public boolean getNextTrace( csSeismicTrace trace ) throws Exception {
     if( myCurrentTraceIndex < numTraces() ) {
       System.arraycopy( myTraceBuffer.samples(myCurrentTraceIndex), 0, trace.samples(), 0, numSamples() );
+      // Copy trace headers too (before, only the samples were copied and the new pane showed all headers = 0)
+      csHeader[] hin  = myTraceBuffer.headerValues(myCurrentTraceIndex);
+      csHeader[] hout = trace.headerValues();
+      if( hin != null && hout != null ) {
+        for( int i = 0; i < Math.min( hin.length, hout.length ); i++ ) {
+          if( hin[i] != null ) hout[i] = new csHeader( hin[i] );
+        }
+      }
       myCurrentTraceIndex += 1;
       return true;
     }

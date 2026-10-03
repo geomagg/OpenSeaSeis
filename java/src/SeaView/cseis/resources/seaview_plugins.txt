@@ -3,3 +3,6 @@
 cseis.plugins.csPanelInfoPlugin
 cseis.plugins.csExportNpyPlugin
 cseis.plugins.csSpectrogramPlugin
+cseis.plugins.csSpkFXPlugin
+cseis.plugins.csSpkHMOPlugin
+cseis.plugins.csSpkSortPlugin
