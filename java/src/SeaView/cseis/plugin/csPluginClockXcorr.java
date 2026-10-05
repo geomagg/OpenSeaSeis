@@ -57,6 +57,8 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
   private String mySensorHdr = null;
   private String mySensorValue = null;
   private String myRefNode = "";
+  private double myDispLag = 5.0;       // [s] lag window shown in the output pane
+  private boolean myFolded = true;      // also open the 'folded branches' pane
 
   @Override
   public String getName() {
@@ -120,6 +122,9 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
     textRef.setToolTipText( "Node de referência (erro = 0). Vazio: média dos erros = 0" );
     JCheckBox boxOneBit = new JCheckBox( "Normalização one-bit", myParams.oneBit );
     JCheckBox boxWhiten = new JCheckBox( "Branqueamento espectral", myParams.whiten );
+    JTextField textDisp = num( myDispLag );
+    textDisp.setToolTipText( "Janela de lag mostrada no painel de saída (o cálculo usa o lag máximo)" );
+    JCheckBox boxFolded = new JCheckBox( "Painel extra: ramos dobrados (+lag e -lag lado a lado)", myFolded );
 
     JPanel panel = new JPanel( new GridLayout( 0, 2, 6, 4 ) );
     panel.add( new JLabel( "Sensor a usar:" ) );                      panel.add( comboSensorVal );
@@ -133,6 +138,8 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
     panel.add( new JLabel( "Qualidade mínima do par (0-1):" ) );      panel.add( textQ );
     panel.add( new JLabel( "Node de referência (vazio = média):" ) ); panel.add( textRef );
     panel.add( boxOneBit );                                           panel.add( boxWhiten );
+    panel.add( new JLabel( "Lag exibido no painel [s]:" ) );          panel.add( textDisp );
+    panel.add( boxFolded );                                           panel.add( new JLabel( "" ) );
     JPanel top = new JPanel( new BorderLayout( 6, 6 ) );
     top.add( new JLabel( "<html>Antes da correlação todos os traços são alinhados no tempo absoluto:<br>"
         + "começam no início mais tardio e terminam no fim mais cedo (headers time_samp1<br>"
@@ -154,6 +161,7 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
       myParams.periodMin = dbl( textPer );
       myParams.neighbors = Integer.parseInt( textK.getText().trim() );
       myParams.minQuality = dbl( textQ );
+      myDispLag = dbl( textDisp );
       myRefNode = textRef.getText().trim();
       myParams.refNode = myRefNode.isEmpty() ? Integer.MIN_VALUE : Integer.parseInt( myRefNode );
     }
@@ -163,6 +171,9 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
     }
     myParams.oneBit = boxOneBit.isSelected();
     myParams.whiten = boxWhiten.isSelected();
+    myFolded = boxFolded.isSelected();
+    final double dispLag = myDispLag;
+    final boolean folded = myFolded;
     final int iNode = hdrSel[0], iSensor = hdrSel[1];
     myNodeHdr = defs[iNode].name;
     mySensorHdr = ( iSensor >= 0 ) ? defs[iSensor].name : null;
@@ -242,7 +253,7 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
           return;
         }
         ourCounter++;
-        openCorrelationPane( ctx, res, "XCLK" + ourCounter + " " + paneTitle );
+        openCorrelationPanes( ctx, res, "XCLK" + ourCounter + " " + paneTitle, dispLag, folded );
         showReport( ctx, res, params, paneTitle, sensorTxt, dupCount, noTimeCount );
       }
     };
@@ -250,43 +261,105 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
   }
 
   //--------------------------------------------------------------------
-  /** New pane: one trace per pair, 2*nl+1 samples, lag 0 at sample nl */
-  private static void openCorrelationPane( csIPluginContext ctx, csClockXcorr.Result r, String title ) {
-    csHeaderDef[] defs = {
-      new csHeaderDef( "trcno", "Trace number", csHeaderDef.TYPE_INT ),
-      new csHeaderDef( "node_a", "First node of the pair", csHeaderDef.TYPE_INT ),
-      new csHeaderDef( "node_b", "Second node of the pair", csHeaderDef.TYPE_INT ),
-      new csHeaderDef( "rcv", "Second node of the pair (rcv)", csHeaderDef.TYPE_INT ),
-      new csHeaderDef( "dnode", "node_b - node_a", csHeaderDef.TYPE_INT ),
-      new csHeaderDef( "shift_ms", "Clock shift e_b - e_a [ms]", csHeaderDef.TYPE_FLOAT ),
-      new csHeaderDef( "quality", "Symmetry correlation (0-1)", csHeaderDef.TYPE_FLOAT ),
-      new csHeaderDef( "amp_ratio", "max|C| lags>0 / max|C| lags<0", csHeaderDef.TYPE_FLOAT ),
-      new csHeaderDef( "lag0_ms", "Time of lag 0 in this trace [ms]", csHeaderDef.TYPE_FLOAT ),
-    };
-    int len = 2 * r.nl + 1;
+  private static final csHeaderDef[] PANE_HDRS = {
+    new csHeaderDef( "trcno", "Trace number", csHeaderDef.TYPE_INT ),
+    new csHeaderDef( "node_a", "First node of the pair", csHeaderDef.TYPE_INT ),
+    new csHeaderDef( "node_b", "Second node of the pair", csHeaderDef.TYPE_INT ),
+    new csHeaderDef( "rcv", "Second node of the pair (rcv)", csHeaderDef.TYPE_INT ),
+    new csHeaderDef( "dnode", "node_b - node_a (0: separator trace)", csHeaderDef.TYPE_INT ),
+    new csHeaderDef( "shift_ms", "Clock shift e_b - e_a [ms]", csHeaderDef.TYPE_FLOAT ),
+    new csHeaderDef( "quality", "Symmetry correlation (0-1)", csHeaderDef.TYPE_FLOAT ),
+    new csHeaderDef( "amp_ratio", "max|C| lags>0 / max|C| lags<0", csHeaderDef.TYPE_FLOAT ),
+    new csHeaderDef( "lag0_ms", "Time of lag 0 in this trace [ms]", csHeaderDef.TYPE_FLOAT ),
+    new csHeaderDef( "branch", "+1: positive lags, -1: negative lags mirrored, 0: full correlation", csHeaderDef.TYPE_INT ),
+  };
+
+  /** Pairs ordered by distance in nodes (dnode), then by first node */
+  private static Integer[] pairOrder( csClockXcorr.Result r ) {
+    Integer[] o = new Integer[r.pairA.length];
+    for( int i = 0; i < o.length; i++ ) o[i] = i;
+    java.util.Arrays.sort( o, ( x, y ) -> {
+      int dx = r.pairB[x] - r.pairA[x], dy = r.pairB[y] - r.pairA[y];
+      return ( dx != dy ) ? Integer.compare( dx, dy ) : Integer.compare( r.pairA[x], r.pairA[y] );
+    } );
+    return o;
+  }
+  private static csHeader[] pairHeaders( csClockXcorr.Result r, int p, int trc, float lag0Ms, int branch ) {
+    csHeader[] h = new csHeader[PANE_HDRS.length];
+    for( int i = 0; i < h.length; i++ ) h[i] = new csHeader();
+    h[0].setValue( trc );
+    h[9].setValue( branch );
+    if( p < 0 ) return h;   // separator
+    int a = r.nodes[r.pairA[p]], b = r.nodes[r.pairB[p]];
+    h[1].setValue( a );
+    h[2].setValue( b );
+    h[3].setValue( b );
+    h[4].setValue( b - a );
+    h[5].setValue( (float)( 1000.0 * r.pairShift[p] ) );
+    h[6].setValue( (float)r.pairQuality[p] );
+    h[7].setValue( (float)( r.pairAmpNeg[p] > 0.0 ? r.pairAmpPos[p] / r.pairAmpNeg[p] : 0.0 ) );
+    h[8].setValue( lag0Ms );
+    return h;
+  }
+  private static void normalize( float[] s ) {
+    float mx = 0.0f;
+    for( float v : s ) mx = Math.max( mx, Math.abs( v ) );
+    if( mx > 0.0f ) for( int i = 0; i < s.length; i++ ) s[i] /= mx;
+  }
+
+  /**
+   * New pane(s) with the stacked correlations, pairs ordered by distance (dnode) and a blank trace
+   * between distance groups:
+   * <ol>
+   * <li>full correlation in a window of +/- dispLag seconds, lag 0 in the middle of the trace;</li>
+   * <li>(folded) the two branches of each pair side by side, both as a function of |lag| from the
+   *     top: C(+tau) and C(-tau) mirrored. Without clock error the two traces of a pair are alike
+   *     (same arrival time); a clock error a moves one arrival up and the other down by a, so the
+   *     two traces are offset by 2a.</li>
+   * </ol>
+   */
+  private static void openCorrelationPanes( csIPluginContext ctx, csClockXcorr.Result r, String title,
+                                            double dispLagSec, boolean folded ) {
+    int nd = Math.max( 2, Math.min( r.nl, (int)Math.round( dispLagSec / r.dt ) ) );
     float dtMs = (float)( r.dt * 1000.0 );
-    csVirtualSeismicReader reader = new csVirtualSeismicReader( len, defs.length, dtMs, defs, csUnits.DOMAIN_TIME );
+    Integer[] order = pairOrder( r );
+    // 1) full correlation, lag 0 at sample nd
+    int len = 2 * nd + 1;
+    float lag0 = (float)( nd * r.dt * 1000.0 );
+    csVirtualSeismicReader reader = new csVirtualSeismicReader( len, PANE_HDRS.length, dtMs, PANE_HDRS, csUnits.DOMAIN_TIME );
     csTraceBuffer out = reader.retrieveTraceBuffer();
-    for( int p = 0; p < r.pairA.length; p++ ) {
-      float[] s = r.cc[p].clone();
-      float mx = 0.0f;
-      for( float v : s ) mx = Math.max( mx, Math.abs( v ) );
-      if( mx > 0.0f ) for( int i = 0; i < len; i++ ) s[i] /= mx;
-      int a = r.nodes[r.pairA[p]], b = r.nodes[r.pairB[p]];
-      csHeader[] h = new csHeader[defs.length];
-      for( int i = 0; i < h.length; i++ ) h[i] = new csHeader();
-      h[0].setValue( p + 1 );
-      h[1].setValue( a );
-      h[2].setValue( b );
-      h[3].setValue( b );
-      h[4].setValue( b - a );
-      h[5].setValue( (float)( 1000.0 * r.pairShift[p] ) );
-      h[6].setValue( (float)r.pairQuality[p] );
-      h[7].setValue( (float)( r.pairAmpNeg[p] > 0.0 ? r.pairAmpPos[p] / r.pairAmpNeg[p] : 0.0 ) );
-      h[8].setValue( (float)( r.nl * r.dt * 1000.0 ) );
-      out.addTrace( s, h );
+    int trc = 0, lastD = -1;
+    for( int p : order ) {
+      int d = r.pairB[p] - r.pairA[p];
+      if( lastD >= 0 && d != lastD ) out.addTrace( new float[len], pairHeaders( r, -1, ++trc, lag0, 0 ) );
+      lastD = d;
+      float[] s = new float[len];
+      System.arraycopy( r.cc[p], r.nl - nd, s, 0, len );
+      normalize( s );
+      out.addTrace( s, pairHeaders( r, p, ++trc, lag0, 0 ) );
     }
-    ctx.openNewPane( reader, String.format( Locale.US, "%s (lag 0 = %.0f ms)", title, r.nl * r.dt * 1000.0 ) );
+    ctx.openNewPane( reader, String.format( Locale.US, "%s CC (lag 0 = %.0f ms)", title, lag0 ) );
+    if( !folded ) return;
+    // 2) folded branches: |lag| = 0 at the top
+    int lenF = nd + 1;
+    csVirtualSeismicReader readerF = new csVirtualSeismicReader( lenF, PANE_HDRS.length, dtMs, PANE_HDRS, csUnits.DOMAIN_TIME );
+    csTraceBuffer outF = readerF.retrieveTraceBuffer();
+    trc = 0;
+    boolean first = true;
+    for( int p : order ) {
+      if( !first ) outF.addTrace( new float[lenF], pairHeaders( r, -1, ++trc, 0.0f, 0 ) );
+      first = false;
+      float[] pos = new float[lenF], neg = new float[lenF];
+      for( int k = 0; k <= nd; k++ ) {
+        pos[k] = r.cc[p][r.nl + k];
+        neg[k] = r.cc[p][r.nl - k];
+      }
+      normalize( pos );
+      normalize( neg );
+      outF.addTrace( pos, pairHeaders( r, p, ++trc, 0.0f, +1 ) );
+      outF.addTrace( neg, pairHeaders( r, p, ++trc, 0.0f, -1 ) );
+    }
+    ctx.openNewPane( readerF, title + " ramos dobrados (|lag|; +lag | -lag espelhado)" );
   }
 
   //--------------------------------------------------------------------
