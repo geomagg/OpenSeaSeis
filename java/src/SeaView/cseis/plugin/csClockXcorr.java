@@ -44,11 +44,11 @@ public final class csClockXcorr {
     public double fmax = 2.0;          // [Hz]
     public double winSec = 120.0;      // correlation window [s]
     public double maxLagSec = 20.0;    // max lag kept [s]
-    public double minLagSec = 0.5;     // lags |tau| < this are ignored in the symmetry fit [s]
+    public double minLagSec = 0.2;     // lags |tau| < this are ignored in the symmetry fit [s]
     public double periodMin = 60.0;    // stacking period for the drift [min], <= 0: only total
     public boolean oneBit = true;
     public boolean whiten = true;
-    public int neighbors = 3;          // pairs: each node with its next K nodes
+    public int neighbors = 5;          // pairs: each node with its next K nodes
     public double minQuality = 0.2;    // pairs with symmetry correlation below this are not used
     public int refNode = Integer.MIN_VALUE;  // node with e = 0; MIN_VALUE: mean(e) = 0
   }
@@ -85,6 +85,8 @@ public final class csClockXcorr {
     public double[] nodeErr;           // clock error e [s] from the total stack (NaN: no valid pair)
     public double[][] nodeErrPeriod;   // [node][period] [s]
     public double[] nodeDrift;         // [s/day] (NaN: fewer than 2 periods)
+    public double[] nodeResid;         // nodeErr minus a robust linear trend along the line [s]
+    public boolean[] nodeSuspect;      // |nodeResid| clearly above the scatter of the other nodes
     public int[] nodePairsUsed;
   }
 
@@ -306,6 +308,9 @@ public final class csClockXcorr {
     }
     r.nodeDrift = new double[n];
     for( int i = 0; i < n; i++ ) r.nodeDrift[i] = slopePerDay( r.periodTime, r.nodeErrPeriod[i] );
+    r.nodeResid = new double[n];
+    r.nodeSuspect = new boolean[n];
+    trendResidual( nd, r.nodeErr, dt, r.nodeResid, r.nodeSuspect );
     return r;
   }
 
@@ -513,6 +518,46 @@ public final class csClockXcorr {
     }
     return x;
   }
+  /**
+   * Residual of the clock errors after removing a robust linear trend with the node number.
+   * Independent clocks do not line up along the line: a smooth trend is usually a bias of the
+   * symmetry method caused by directional (non-isotropic) noise, which grows with the distance;
+   * a node with a real clock error sticks out of the trend. Fit: least squares, repeated without
+   * the points beyond 3 robust standard deviations (MAD). Suspect: |residual| > max(3 sigma, 2 dt).
+   */
+  static void trendResidual( int[] x, double[] e, double dt, double[] resid, boolean[] suspect ) {
+    int n = x.length;
+    boolean[] use = new boolean[n];
+    for( int i = 0; i < n; i++ ) use[i] = !Double.isNaN( e[i] );
+    double a = 0.0, b = 0.0, sigma = 0.0;
+    for( int iter = 0; iter < 4; iter++ ) {
+      double sx = 0, sy = 0, sxx = 0, sxy = 0; int c = 0;
+      for( int i = 0; i < n; i++ ) if( use[i] ) { sx += x[i]; sy += e[i]; sxx += (double)x[i] * x[i]; sxy += x[i] * e[i]; c++; }
+      if( c < 3 ) { a = ( c > 0 ) ? sy / c : 0.0; b = 0.0; }
+      else {
+        double den = c * sxx - sx * sx;
+        b = ( den != 0.0 ) ? ( c * sxy - sx * sy ) / den : 0.0;
+        a = ( sy - b * sx ) / c;
+      }
+      double[] ar = new double[n]; int m = 0;
+      for( int i = 0; i < n; i++ ) if( use[i] ) ar[m++] = Math.abs( e[i] - ( a + b * x[i] ) );
+      double[] s = Arrays.copyOf( ar, m );
+      Arrays.sort( s );
+      sigma = ( m > 0 ) ? 1.4826 * s[m / 2] : 0.0;
+      boolean changed = false;
+      for( int i = 0; i < n; i++ ) {
+        if( Double.isNaN( e[i] ) ) continue;
+        boolean u = Math.abs( e[i] - ( a + b * x[i] ) ) <= Math.max( 3.0 * sigma, 2.0 * dt );
+        if( u != use[i] ) { use[i] = u; changed = true; }
+      }
+      if( !changed ) break;
+    }
+    for( int i = 0; i < n; i++ ) {
+      resid[i] = Double.isNaN( e[i] ) ? Double.NaN : e[i] - ( a + b * x[i] );
+      suspect[i] = !Double.isNaN( resid[i] ) && Math.abs( resid[i] ) > Math.max( 3.0 * sigma, 2.0 * dt );
+    }
+  }
+
   /** Minimum time span between the first and last period for a drift to be reported [s] */
   public static final double MIN_DRIFT_SPAN_SEC = 3600.0;
 

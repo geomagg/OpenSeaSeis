@@ -328,11 +328,18 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
     sb.append( String.format( Locale.US, "  referência: %s%n", p.refNode == Integer.MIN_VALUE ? "média dos erros = 0" : "node " + p.refNode + " = 0" ) );
 
     sb.append( String.format( Locale.US, "%nPOR NODE  (erro > 0: relógio ATRASADO -- o evento aparece mais cedo no traço)%n" ) );
-    sb.append( String.format( Locale.US, "  %8s %14s %12s %14s %8s%n", "node", "inicio orig.[s]", "erro [ms]", "deriva[ms/dia]", "pares" ) );
+    sb.append( String.format( Locale.US, "  %8s %14s %12s %14s %14s %8s%n", "node", "inicio orig.[s]", "erro [ms]",
+        "erro-tend.[ms]", "deriva[ms/dia]", "pares" ) );
+    int nSusp = 0;
     for( int i = 0; i < r.nodes.length; i++ ) {
-      sb.append( String.format( Locale.US, "  %8d %+14.3f %12s %14s %8d%n", r.nodes[i], al.t0[i] - al.tStart,
-          fmtMs( r.nodeErr[i] ), fmtMs( r.nodeDrift[i] ), r.nodePairsUsed[i] ) );
+      if( r.nodeSuspect[i] ) nSusp++;
+      sb.append( String.format( Locale.US, "  %8d %+14.3f %12s %14s %14s %8d%s%n", r.nodes[i], al.t0[i] - al.tStart,
+          fmtMs( r.nodeErr[i] ), fmtMs( r.nodeResid[i] ), fmtMs( r.nodeDrift[i] ), r.nodePairsUsed[i],
+          r.nodeSuspect[i] ? "   <== SUSPEITO" : "" ) );
     }
+    sb.append( String.format( Locale.US, "  erro-tend. = erro menos a tendência linear ao longo da linha (ruído direcional gera%n"
+        + "  uma tendência suave; um relógio com problema sai fora dela). %s%n",
+        nSusp == 0 ? "Nenhum node suspeito." : nSusp + " node(s) suspeito(s)." ) );
     if( r.nPeriods > 1 ) {
       sb.append( String.format( Locale.US, "%nERRO POR PERÍODO [ms]  (centro do período, h após o início comum)%n  %8s", "node" ) );
       for( int q = 0; q < r.nPeriods; q++ ) sb.append( String.format( Locale.US, " %9.2fh", r.periodTime[q] / 3600.0 ) );
@@ -368,12 +375,12 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
     if( fc.showSaveDialog( parent ) != JFileChooser.APPROVE_OPTION ) return;
     File f = fc.getSelectedFile();
     try( PrintWriter w = new PrintWriter( new FileWriter( f ) ) ) {
-      w.print( "node,start_offset_s,clock_error_ms,drift_ms_per_day,pairs_used" );
+      w.print( "node,start_offset_s,clock_error_ms,error_minus_trend_ms,suspect,drift_ms_per_day,pairs_used" );
       for( int q = 0; q < r.nPeriods; q++ ) w.printf( Locale.US, ",err_ms_%.3fh", r.periodTime[q] / 3600.0 );
       w.println();
       for( int i = 0; i < r.nodes.length; i++ ) {
-        w.printf( Locale.US, "%d,%.6f,%s,%s,%d", r.nodes[i], r.align.t0[i] - r.align.tStart,
-            csv( r.nodeErr[i] ), csv( r.nodeDrift[i] ), r.nodePairsUsed[i] );
+        w.printf( Locale.US, "%d,%.6f,%s,%s,%d,%s,%d", r.nodes[i], r.align.t0[i] - r.align.tStart,
+            csv( r.nodeErr[i] ), csv( r.nodeResid[i] ), r.nodeSuspect[i] ? 1 : 0, csv( r.nodeDrift[i] ), r.nodePairsUsed[i] );
         for( int q = 0; q < r.nPeriods; q++ ) w.print( "," + csv( r.nodeErrPeriod[i][q] ) );
         w.println();
       }
