@@ -6,3 +6,5 @@ cseis.plugins.csSpectrogramPlugin
 cseis.plugins.csSpkFXPlugin
 cseis.plugins.csSpkHMOPlugin
 cseis.plugins.csSpkSortPlugin
+
+cseis.plugins.csSpkClockPlugin
