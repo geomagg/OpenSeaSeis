@@ -103,7 +103,8 @@ public class csMenuBar extends JMenuBar {
 
   private JMenuItem menuSelection;
   
-  private JMenuItem menuAbout;  
+  private JMenuItem menuAbout;
+  private JMenuItem menuHelpClock;  
   private JMenuItem menuImage;
   private JMenuItem menuImageAs;
 
@@ -213,7 +214,8 @@ public class csMenuBar extends JMenuBar {
 
     menuSEGYSetup = new JMenuItem("Segy/SU setup...");
 
-    menuAbout   = new JMenuItem("About");   
+    menuAbout   = new JMenuItem("About");
+    menuHelpClock = new JMenuItem("Clock dos nodes (OBN)...");   
 
     menuHighlight    = new JCheckBoxMenuItem("Highlight trace", false);
     menuCrosshairOn  = new JCheckBoxMenuItem("Show crosshair", false);
@@ -330,6 +332,8 @@ public class csMenuBar extends JMenuBar {
     menuSEGY.add(menuSEGYCharHdr);
     menuSEGY.add(menuSEGYBinHdr);
 
+    menuHelp.add(menuHelpClock);
+    menuHelp.addSeparator();
     menuHelp.add(menuAbout);
     
     add(menuFile);
@@ -715,6 +719,7 @@ public class csMenuBar extends JMenuBar {
       }
     });
 
+    menuHelpClock.addActionListener( e -> cseis.plugin.csClockHelp.show( mySeaView ) );
     menuAbout.addActionListener( new ActionListener() {
       @Override
       public void actionPerformed( ActionEvent e ) {
@@ -753,6 +758,7 @@ public class csMenuBar extends JMenuBar {
     menuExit     .setToolTipText("Exit");
     menuSelection.setToolTipText("Select traces to display");
     menuAbout    .setToolTipText("About");
+    menuHelpClock.setToolTipText("Como usar e interpretar os plugins de clock dos nodes (alinhamento e correlação cruzada)");
 
     myMenuProcessingClear.setToolTipText( "Clear applied processing steps" );
     myMenuProcessingDC.setToolTipText( "Remove DC bias" );

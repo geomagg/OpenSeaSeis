@@ -1,0 +1,114 @@
+<html>
+<head><title>Clock dos nodes - ajuda</title></head>
+<body style="font-family: sans-serif; font-size: 11pt; margin: 10px">
+
+<h2>Clock dos nodes (OBN) por correlação cruzada de ruído</h2>
+
+<p>Menu <b>Plugins</b>:</p>
+<ul>
+<li><b>Alinhar traços no tempo absoluto...</b> - só visualização: todos os traços passam a começar no mesmo instante.</li>
+<li><b>Clock: correlação cruzada dos nodes...</b> - mede o erro de relógio de cada node.</li>
+</ul>
+<p>Entrada: um painel com <b>um traço por node</b> (registro contínuo), por exemplo o
+<tt>SISMICA/LxxxxNyyyy-Nzzzz.cseis</tt> da linha. O node vem do header <tt>rcv</tt>
+(ou <tt>station</tt>, <tt>node</tt>...) e o sensor de <tt>sensor</tt> (ou <tt>chan</tt>...),
+detectados automaticamente; o botão <b>Headers...</b> do diálogo permite trocar.</p>
+
+<h3>1. Alinhamento no tempo absoluto</h3>
+<p>O início de cada traço vem do header <tt>time_samp1</tt> (+<tt>time_samp1_us</tt>) ou de
+<tt>time_year/day/hour/min/sec</tt>. Antes de correlacionar, todos os traços são cortados na
+<b>janela comum</b>: começam no início mais tardio e terminam no fim mais cedo.<br>
+Exemplo: um traço que começa em 7 s e outro em 12 s passam ambos a começar em 12 s, e ambos
+terminam onde o de 7 s termina.</p>
+
+<h3>2. Ideia do método</h3>
+<p>O ruído do mar viaja entre os nodes A e B. A correlação cruzada C(&tau;) de A com B,
+empilhada em muitas janelas, tem <b>dois pulsos</b>:</p>
+<ul>
+<li>em <b>&tau; = +d/v</b>: ruído que passou primeiro por A e depois por B;</li>
+<li>em <b>&tau; = -d/v</b>: ruído que passou primeiro por B e depois por A.</li>
+</ul>
+<p>(d = distância entre os nodes, v = velocidade da onda.) Com os relógios certos, os dois pulsos
+são <b>simétricos em relação ao lag 0</b>.</p>
+<p>Se o relógio de B está deslocado de <b>a</b>, a correlação inteira escorrega de a:
+os pulsos vão para <b>+d/v - a</b> e <b>-d/v - a</b>. Os dois andam <b>para o mesmo lado</b>
+(um se aproxima do lag 0 e o outro se afasta), e o ponto médio entre eles deixa de ser 0 e
+passa a ser <b>-a</b>. Esta é a quebra de simetria que o plugin mede.</p>
+<p>Exemplo (sintético, nodes a 500 m, v = 800 m/s, d/v = 0,625 s, erro de 150 ms no 2606):
+o par 2605-2606 tem pulsos em -0,775 s e +0,475 s em vez de &plusmn;0,625 s.</p>
+<p>A medida: o ramo positivo C(+&tau;) é correlacionado com o ramo negativo espelhado C(-&tau;);
+o deslocamento entre eles é 2a. Com todos os pares, o erro de cada node sai por mínimos
+quadrados (soma = 0 ou node de referência = 0).</p>
+<p><b>Convenção de sinal:</b> erro &gt; 0 = relógio <b>atrasado</b> (o evento aparece mais cedo no traço).</p>
+
+<h3>3. Quais pares são correlacionados</h3>
+<p>Cada node é correlacionado com os <b>K</b> vizinhos seguintes na linha. Com 10 nodes e K = 5:
+5&times;5 + 4 + 3 + 2 + 1 = <b>35 pares</b>. Pares de nodes vizinhos têm dnode = 1, os seguintes
+dnode = 2, e assim por diante.</p>
+
+<h3>4. Parâmetros</h3>
+<table border="1" cellpadding="3" cellspacing="0">
+<tr><td>Sensor a usar</td><td>qual componente (ex. hidrofone ou Z)</td></tr>
+<tr><td>Banda [Hz]</td><td>filtro antes da correlação. O pulso deve ser mais curto que o tempo de trânsito d/v</td></tr>
+<tr><td>Janela de correlação [s]</td><td>tamanho de cada janela correlacionada e empilhada</td></tr>
+<tr><td>Lag máximo [s]</td><td>maior lag calculado (maior que a distância máxima / v)</td></tr>
+<tr><td>Ignorar |lag| menor que [s]</td><td>exclui o entorno do lag 0 (ruído local comum aos nodes)</td></tr>
+<tr><td>Período p/ deriva [min]</td><td>também mede o erro por período e calcula a deriva (só com períodos cobrindo &ge; 1 h); 0 = só o total</td></tr>
+<tr><td>K</td><td>vizinhos por node</td></tr>
+<tr><td>Qualidade mínima</td><td>pares com correlação +lag &times; -lag abaixo disso não entram na solução</td></tr>
+<tr><td>Node de referência</td><td>node cujo erro é fixado em 0 (vazio = média dos erros = 0)</td></tr>
+<tr><td>One-bit / branqueamento</td><td>pré-processamento do ruído; com nodes próximos o one-bit pode enfraquecer o ramo mais fraco - teste desligado</td></tr>
+<tr><td>Lag exibido no painel [s]</td><td>só a visualização (padrão &plusmn;5 s)</td></tr>
+<tr><td>Painel extra: ramos dobrados</td><td>abre também o painel da seção 6</td></tr>
+</table>
+
+<h3>5. Painel "CC (lag 0 = 5000 ms)"</h3>
+<ul>
+<li>Um traço por par, com a correlação completa de -L a +L (L = lag exibido).</li>
+<li>O <b>lag 0 fica no meio</b> do traço: no eixo de tempo, lag = tempo - 5000 ms (header <tt>lag0_ms</tt>).</li>
+<li>Pares <b>ordenados por dnode</b>; um traço em branco separa os grupos (dnode = 1, depois 2, ...).
+Por isso 35 pares viram 39 traços.</li>
+<li>Como ler: dentro de um grupo, todos os pares têm a mesma distância e o pulso deveria cair no
+mesmo lag, formando uma "fila". O par com erro de clock <b>sai da fila</b>: sobe quando o node com
+erro é o node_b, desce quando é o node_a.</li>
+<li>De um grupo para o seguinte o pulso aparece mais tarde (distância maior).</li>
+</ul>
+<p>Headers dos traços: <tt>node_a</tt>, <tt>node_b</tt>, <tt>dnode</tt>, <tt>shift_ms</tt> (e_b - e_a),
+<tt>quality</tt>, <tt>amp_ratio</tt> (amplitude lags&gt;0 / lags&lt;0), <tt>lag0_ms</tt>, <tt>branch</tt>.</p>
+
+<h3>6. Painel "ramos dobrados" - onde a quebra de simetria fica visível</h3>
+<ul>
+<li>Para cada par, <b>dois traços lado a lado</b>: C(+&tau;) (<tt>branch</tt> = +1) e C(-&tau;)
+espelhado (<tt>branch</tt> = -1), cada um normalizado. O eixo vertical é |lag|, começando em 0 no topo.
+Um traço em branco separa os pares.</li>
+<li><b>Sem erro de clock</b>: os dois picos do par ficam <b>na mesma altura</b>.</li>
+<li><b>Com erro a</b>: os picos ficam <b>desnivelados de 2a</b> (no exemplo, 0,3 s para o 2606).</li>
+<li>Não é preciso localizar o lag 0: basta comparar os dois traços vizinhos.</li>
+<li>Para saber qual par é qual, anote <tt>node_a</tt>, <tt>node_b</tt> e <tt>branch</tt> no eixo dos traços.</li>
+</ul>
+<p>Se o ramo negativo for muito fraco (ruído vindo de um só lado, comum com one-bit), o traço
+-lag fica quase sem pulso e a comparação perde força: desligue o one-bit ou ajuste a banda.</p>
+
+<h3>7. Relatório e CSV</h3>
+<ul>
+<li><b>POR NODE</b>: início original, <b>erro [ms]</b>, <b>erro-tend. [ms]</b>, deriva [ms/dia], nº de pares.</li>
+<li><b>erro-tend.</b> = erro menos uma tendência linear ao longo da linha. Ruído direcional produz uma
+tendência suave proporcional à distância; um relógio com problema sai fora dela e é marcado
+<b>&lt;== SUSPEITO</b>.</li>
+<li><b>ERRO POR PERÍODO</b>: o erro em cada período; a inclinação é a deriva.</li>
+<li><b>POR PAR</b>: deslocamento e_b - e_a, qualidade e A+/A-; "(não usado)" = abaixo da qualidade mínima.</li>
+<li>O botão do relatório salva o CSV por node (<tt>clock_nodes.csv</tt>).</li>
+</ul>
+
+<h3>8. Cuidados</h3>
+<ul>
+<li>O erro só é confiável se for menor que o tempo de trânsito d/v do par. Nodes muito próximos com
+erros grandes: aumente K.</li>
+<li>Com "média = 0", um node com erro puxa todos os outros em 1/n: informe um node de referência bom.</li>
+<li>Ruído direcional desloca todos os pares de forma proporcional à distância; olhe o
+<b>erro-tend.</b> e não só o erro.</li>
+</ul>
+
+<p style="font-size: 9pt; color: gray">M. A. Gallotti Guimarães (COPPE-UFRJ), 2026.</p>
+</body>
+</html>

@@ -253,8 +253,22 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
           return;
         }
         ourCounter++;
-        openCorrelationPanes( ctx, res, "XCLK" + ourCounter + " " + paneTitle, dispLag, folded );
-        showReport( ctx, res, params, paneTitle, sensorTxt, dupCount, noTimeCount );
+        System.err.println( "[ClockXcorr] calculo terminado: " + res.pairA.length + " pares; abrindo paineis..." );
+        try {
+          openCorrelationPanes( ctx, res, "XCLK" + ourCounter + " " + paneTitle, dispLag, folded );
+        }
+        catch( Throwable t ) {
+          t.printStackTrace();
+          JOptionPane.showMessageDialog( ctx.getParentFrame(), "Erro ao abrir os paineis de correlacao:\n" + t
+              + "\n(detalhes no terminal onde o seaview.sh foi chamado)", title, JOptionPane.ERROR_MESSAGE );
+        }
+        try {
+          showReport( ctx, res, params, paneTitle, sensorTxt, dupCount, noTimeCount );
+        }
+        catch( Throwable t ) {
+          t.printStackTrace();
+          JOptionPane.showMessageDialog( ctx.getParentFrame(), "Erro ao montar o relatorio:\n" + t, title, JOptionPane.ERROR_MESSAGE );
+        }
       }
     };
     worker.execute();
