@@ -16,7 +16,9 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
@@ -77,22 +79,38 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
       JOptionPane.showMessageDialog( ctx.getParentFrame(), "O painel ativo não está no domínio do tempo", title, JOptionPane.WARNING_MESSAGE );
       return;
     }
-    csHeaderDef[] defs = ctx.getHeaderDef();
-    String[] names = new String[defs.length];
-    for( int i = 0; i < defs.length; i++ ) names[i] = defs[i].name;
+    final csHeaderDef[] defs = ctx.getHeaderDef();
+
+    //--- Node / sensor headers: detected automatically (no question). The "Headers..." button of
+    //    the dialog shows every header of the 1st trace and lets you change them if needed.
+    final int[] hdrSel = { detectHeader( defs, myNodeHdr, NODE_HDRS ), detectHeader( defs, mySensorHdr, SENSOR_HDRS ) };
+    if( hdrSel[0] < 0 ) {
+      JOptionPane.showMessageDialog( ctx.getParentFrame(), "Nenhum header de node encontrado ("
+          + String.join( ", ", NODE_HDRS ) + ").\nHeaders do 1º traço:\n" + headerList( defs, buf.headerValues( 0 ), 40 ),
+          title, JOptionPane.ERROR_MESSAGE );
+      return;
+    }
+    JLabel infoHdr = new JLabel();
+    JComboBox<String> comboSensorVal = new JComboBox<>();
+    Runnable refreshHdr = () -> {
+      List<String> vals = sensorValues( buf, hdrSel[0], hdrSel[1] );
+      comboSensorVal.removeAllItems();
+      for( String v : vals ) comboSensorVal.addItem( v );
+      if( mySensorValue != null && vals.contains( mySensorValue ) ) comboSensorVal.setSelectedItem( mySensorValue );
+      comboSensorVal.setEnabled( vals.size() > 1 );
+      String sensorDesc = ( hdrSel[1] >= 0 ) ? "header <b>" + defs[hdrSel[1]].name + "</b>"
+                                             : "sem header de sensor: <b>ordem do traço dentro do node</b>";
+      infoHdr.setText( "<html>Node: header <b>" + defs[hdrSel[0]].name + "</b> (" + countNodes( buf, hdrSel[0] )
+          + " nodes) &nbsp; | &nbsp; Sensor: " + sensorDesc + " (" + vals.size() + " valor(es))</html>" );
+    };
+    refreshHdr.run();
+    JButton btnHdr = new JButton( "Headers..." );
+    btnHdr.setToolTipText( "Ver todos os headers do 1º traço e, se precisar, trocar os headers de node/sensor" );
+    btnHdr.addActionListener( e -> {
+      if( chooseHeaders( ctx, defs, buf, hdrSel ) ) refreshHdr.run();
+    } );
 
     //--- Parameter dialog
-    JComboBox<String> comboNode = new JComboBox<>( names );
-    String nDefault = firstPresent( names, myNodeHdr, "rcv", "station", "node", "chan" );
-    if( nDefault != null ) comboNode.setSelectedItem( nDefault );
-    String[] sensorChoices = new String[names.length + 1];
-    sensorChoices[0] = "(nenhum)";
-    System.arraycopy( names, 0, sensorChoices, 1, names.length );
-    JComboBox<String> comboSensor = new JComboBox<>( sensorChoices );
-    String sDefault = firstPresent( names, mySensorHdr, "sensor", "chan" );
-    comboSensor.setSelectedItem( sDefault != null ? sDefault : "(nenhum)" );
-    JTextField textSensorVal = new JTextField( mySensorValue != null ? mySensorValue : "" );
-    textSensorVal.setToolTipText( "Valor do header do sensor a usar (vazio = o primeiro encontrado)" );
     JTextField textFmin = num( myParams.fmin ), textFmax = num( myParams.fmax );
     JTextField textWin = num( myParams.winSec ), textLag = num( myParams.maxLagSec ), textMinLag = num( myParams.minLagSec );
     JTextField textPer = num( myParams.periodMin );
@@ -104,9 +122,7 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
     JCheckBox boxWhiten = new JCheckBox( "Branqueamento espectral", myParams.whiten );
 
     JPanel panel = new JPanel( new GridLayout( 0, 2, 6, 4 ) );
-    panel.add( new JLabel( "Header do node:" ) );                     panel.add( comboNode );
-    panel.add( new JLabel( "Header do sensor:" ) );                   panel.add( comboSensor );
-    panel.add( new JLabel( "Sensor a usar (valor):" ) );              panel.add( textSensorVal );
+    panel.add( new JLabel( "Sensor a usar:" ) );                      panel.add( comboSensorVal );
     panel.add( new JLabel( "Banda: freq. mínima [Hz]:" ) );           panel.add( textFmin );
     panel.add( new JLabel( "Banda: freq. máxima [Hz]:" ) );           panel.add( textFmax );
     panel.add( new JLabel( "Janela de correlação [s]:" ) );           panel.add( textWin );
@@ -117,10 +133,14 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
     panel.add( new JLabel( "Qualidade mínima do par (0-1):" ) );      panel.add( textQ );
     panel.add( new JLabel( "Node de referência (vazio = média):" ) ); panel.add( textRef );
     panel.add( boxOneBit );                                           panel.add( boxWhiten );
-    JPanel outer = new JPanel( new BorderLayout( 4, 8 ) );
-    outer.add( new JLabel( "<html>Antes da correlação todos os traços são alinhados no tempo absoluto:<br>"
+    JPanel top = new JPanel( new BorderLayout( 6, 6 ) );
+    top.add( new JLabel( "<html>Antes da correlação todos os traços são alinhados no tempo absoluto:<br>"
         + "começam no início mais tardio e terminam no fim mais cedo (headers time_samp1<br>"
         + "ou time_year/day/hour/min/sec).</html>" ), BorderLayout.NORTH );
+    top.add( infoHdr, BorderLayout.CENTER );
+    top.add( btnHdr, BorderLayout.EAST );
+    JPanel outer = new JPanel( new BorderLayout( 4, 8 ) );
+    outer.add( top, BorderLayout.NORTH );
     outer.add( panel, BorderLayout.CENTER );
     int option = JOptionPane.showConfirmDialog( ctx.getParentFrame(), outer, title + " - " + ctx.getTitle(),
         JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE );
@@ -143,9 +163,11 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
     }
     myParams.oneBit = boxOneBit.isSelected();
     myParams.whiten = boxWhiten.isSelected();
-    myNodeHdr = (String)comboNode.getSelectedItem();
-    mySensorHdr = "(nenhum)".equals( comboSensor.getSelectedItem() ) ? null : (String)comboSensor.getSelectedItem();
-    mySensorValue = textSensorVal.getText().trim();
+    final int iNode = hdrSel[0], iSensor = hdrSel[1];
+    myNodeHdr = defs[iNode].name;
+    mySensorHdr = ( iSensor >= 0 ) ? defs[iSensor].name : null;
+    final String sensorUsed = (String)comboSensorVal.getSelectedItem();
+    mySensorValue = sensorUsed;
     double dt = ctx.getSampleInt() / 1000.0;
     if( !( myParams.fmin >= 0.0 && myParams.fmax > myParams.fmin && myParams.fmax < 0.5 / dt ) ) {
       JOptionPane.showMessageDialog( ctx.getParentFrame(), String.format( Locale.US,
@@ -153,30 +175,24 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
       return;
     }
 
-    //--- One trace per node
-    int iNode = csClockXcorr.headerIndex( defs, myNodeHdr );
-    int iSensor = ( mySensorHdr == null ) ? -1 : csClockXcorr.headerIndex( defs, mySensorHdr );
-    String sensorUsed = null;
+    //--- One trace per node (the chosen sensor)
     Map<Integer,Integer> traceOfNode = new LinkedHashMap<>();
+    Map<Integer,Integer> countInNode = new LinkedHashMap<>();
     int nDup = 0, nNoTime = 0;
-    Set<String> sensorValues = new LinkedHashSet<>();
     for( int i = 0; i < buf.numTraces(); i++ ) {
       csHeader[] h = buf.headerValues( i );
-      if( iSensor >= 0 ) {
-        String sv = h[iSensor].stringValue().trim();
-        sensorValues.add( sv );
-        if( sensorUsed == null ) sensorUsed = mySensorValue.isEmpty() ? sv : mySensorValue;
-        if( !sameValue( sv, sensorUsed ) ) continue;
-      }
-      if( Double.isNaN( csClockXcorr.startTimeSec( h, defs ) ) ) { nNoTime++; continue; }
       int node = h[iNode].intValue();
+      int order = countInNode.merge( node, 1, Integer::sum );
+      String sv = ( iSensor >= 0 ) ? hdrText( h[iSensor] ) : String.valueOf( order );
+      if( sensorUsed != null && !sameValue( sv, sensorUsed ) ) continue;
+      if( Double.isNaN( csClockXcorr.startTimeSec( h, defs ) ) ) { nNoTime++; continue; }
       if( traceOfNode.containsKey( node ) ) { nDup++; continue; }
       traceOfNode.put( node, i );
     }
     if( traceOfNode.size() < 2 ) {
       JOptionPane.showMessageDialog( ctx.getParentFrame(), String.format( Locale.US,
-          "Menos de 2 nodes utilizáveis.%nSensor '%s' (valores no painel: %s)%nTraços sem tempo no header: %d",
-          sensorUsed, sensorValues, nNoTime ), title, JOptionPane.ERROR_MESSAGE );
+          "Menos de 2 nodes utilizáveis com o sensor '%s'.%nTraços sem tempo no header: %d%n%nHeaders do 1º traço:%n%s",
+          sensorUsed, nNoTime, headerList( defs, buf.headerValues( 0 ), 40 ) ), title, JOptionPane.ERROR_MESSAGE );
       return;
     }
     final int n = traceOfNode.size();
@@ -193,7 +209,7 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
     }
     final csClockXcorr.Params params = copy( myParams );
     final String paneTitle = ctx.getTitle();
-    final String sensorTxt = ( iSensor >= 0 ) ? mySensorHdr + "=" + sensorUsed : "(todos os traços)";
+    final String sensorTxt = ( iSensor >= 0 ) ? mySensorHdr + "=" + sensorUsed : "sensor (ordem no node)=" + sensorUsed;
     final int dupCount = nDup, noTimeCount = nNoTime;
 
     //--- Compute in background
@@ -373,13 +389,100 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
   }
 
   //--------------------------------------------------------------------
-  private static String firstPresent( String[] names, String... wanted ) {
-    for( String w : wanted ) {
-      if( w == null ) continue;
-      for( String n : names ) if( n.equalsIgnoreCase( w ) ) return n;
+  // Header detection
+  //--------------------------------------------------------------------
+  /** Candidate names of the node header, in order of preference (case-insensitive) */
+  static final String[] NODE_HDRS = { "rcv", "station", "rcv_station", "rec_station", "node", "node_id", "receiver" };
+  /** Candidate names of the sensor/component header */
+  static final String[] SENSOR_HDRS = { "sensor", "sensor_id", "comp", "component", "chan", "channel" };
+
+  /** Index of the first header matching `preferred` (last used) or one of `candidates`, exact
+   *  name first (case-insensitive, trimmed), then any header NAME containing the candidate; -1 if none */
+  static int detectHeader( csHeaderDef[] defs, String preferred, String[] candidates ) {
+    List<String> all = new ArrayList<>();
+    if( preferred != null ) all.add( preferred );
+    for( String c : candidates ) all.add( c );
+    for( String c : all ) {
+      for( int i = 0; i < defs.length; i++ ) {
+        if( defs[i].name != null && defs[i].name.trim().equalsIgnoreCase( c ) ) return i;
+      }
     }
-    return null;
+    for( String c : candidates ) {
+      for( int i = 0; i < defs.length; i++ ) {
+        if( defs[i].name != null && defs[i].name.toLowerCase( Locale.US ).contains( c ) ) return i;
+      }
+    }
+    return -1;
   }
+  /** Distinct sensor values in trace order (with no sensor header: position of the trace inside its node, 1..m) */
+  static List<String> sensorValues( csISeismicTraceBuffer buf, int iNode, int iSensor ) {
+    Set<String> vals = new LinkedHashSet<>();
+    Map<Integer,Integer> count = new LinkedHashMap<>();
+    for( int i = 0; i < buf.numTraces(); i++ ) {
+      csHeader[] h = buf.headerValues( i );
+      if( iSensor >= 0 ) vals.add( hdrText( h[iSensor] ) );
+      else vals.add( String.valueOf( count.merge( h[iNode].intValue(), 1, Integer::sum ) ) );
+    }
+    return new ArrayList<>( vals );
+  }
+  static int countNodes( csISeismicTraceBuffer buf, int iNode ) {
+    Set<Integer> s = new LinkedHashSet<>();
+    for( int i = 0; i < buf.numTraces(); i++ ) s.add( buf.headerValues( i )[iNode].intValue() );
+    return s.size();
+  }
+  /** Header value as text: strings as they are, numbers without ".0" when integral */
+  static String hdrText( csHeader h ) {
+    if( h == null ) return "";
+    Object v = h.value();
+    if( v == null ) return "";
+    if( v instanceof Number ) {
+      double d = ( (Number)v ).doubleValue();
+      if( d == Math.rint( d ) && Math.abs( d ) < 1.0e15 ) return String.valueOf( (long)d );
+      return String.valueOf( d );
+    }
+    return v.toString().trim();
+  }
+  /** "name = value" of the first `max` headers of one trace */
+  static String headerList( csHeaderDef[] defs, csHeader[] h, int max ) {
+    StringBuilder sb = new StringBuilder();
+    for( int i = 0; i < defs.length && i < max; i++ ) {
+      sb.append( String.format( Locale.US, "  %-18s = %s%n", defs[i].name, ( h != null && i < h.length ) ? hdrText( h[i] ) : "" ) );
+    }
+    if( defs.length > max ) sb.append( String.format( Locale.US, "  ... (+%d)%n", defs.length - max ) );
+    return sb.toString();
+  }
+  /** "Headers..." dialog: every header of the 1st trace, with node/sensor choosers. @return true if changed */
+  private static boolean chooseHeaders( csIPluginContext ctx, csHeaderDef[] defs, csISeismicTraceBuffer buf, int[] sel ) {
+    String[] names = new String[defs.length];
+    for( int i = 0; i < defs.length; i++ ) names[i] = defs[i].name;
+    String[] sNames = new String[names.length + 1];
+    sNames[0] = "(nenhum: ordem do traço no node)";
+    System.arraycopy( names, 0, sNames, 1, names.length );
+    JComboBox<String> cNode = new JComboBox<>( names );
+    cNode.setSelectedIndex( sel[0] );
+    JComboBox<String> cSens = new JComboBox<>( sNames );
+    cSens.setSelectedIndex( sel[1] + 1 );
+    cNode.setMaximumRowCount( 25 );
+    cSens.setMaximumRowCount( 25 );
+    JTextArea list = new JTextArea( headerList( defs, buf.headerValues( 0 ), defs.length ), 18, 46 );
+    list.setEditable( false );
+    list.setFont( new Font( Font.MONOSPACED, Font.PLAIN, 12 ) );
+    list.setCaretPosition( 0 );
+    JPanel choose = new JPanel( new GridLayout( 0, 2, 6, 4 ) );
+    choose.add( new JLabel( "Header do node:" ) );   choose.add( cNode );
+    choose.add( new JLabel( "Header do sensor:" ) ); choose.add( cSens );
+    JPanel p = new JPanel( new BorderLayout( 4, 8 ) );
+    p.add( new JLabel( String.format( Locale.US, "%d headers no painel (valores do 1º traço):", defs.length ) ), BorderLayout.NORTH );
+    p.add( new JScrollPane( list ), BorderLayout.CENTER );
+    p.add( choose, BorderLayout.SOUTH );
+    if( JOptionPane.showConfirmDialog( ctx.getParentFrame(), p, "Headers", JOptionPane.OK_CANCEL_OPTION,
+        JOptionPane.PLAIN_MESSAGE ) != JOptionPane.OK_OPTION ) return false;
+    sel[0] = cNode.getSelectedIndex();
+    sel[1] = cSens.getSelectedIndex() - 1;
+    return true;
+  }
+
+  //--------------------------------------------------------------------
   private static boolean sameValue( String a, String b ) {
     if( a.equals( b ) ) return true;
     try { return Double.parseDouble( a ) == Double.parseDouble( b ); }
