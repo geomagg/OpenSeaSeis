@@ -145,7 +145,13 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
         + "começam no início mais tardio e terminam no fim mais cedo (headers time_samp1<br>"
         + "ou time_year/day/hour/min/sec).</html>" ), BorderLayout.NORTH );
     top.add( infoHdr, BorderLayout.CENTER );
-    top.add( btnHdr, BorderLayout.EAST );
+    JButton btnHelp = new JButton( "Ajuda" );
+    btnHelp.setToolTipText( "Como o método funciona e como ler os painéis e o relatório" );
+    btnHelp.addActionListener( e -> csClockHelp.show( btnHelp ) );   // owner = this (modal) dialog
+    JPanel btns = new JPanel( new GridLayout( 0, 1, 0, 4 ) );
+    btns.add( btnHdr );
+    btns.add( btnHelp );
+    top.add( btns, BorderLayout.EAST );
     JPanel outer = new JPanel( new BorderLayout( 4, 8 ) );
     outer.add( top, BorderLayout.NORTH );
     outer.add( panel, BorderLayout.CENTER );
@@ -373,7 +379,47 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
       outF.addTrace( pos, pairHeaders( r, p, ++trc, 0.0f, +1 ) );
       outF.addTrace( neg, pairHeaders( r, p, ++trc, 0.0f, -1 ) );
     }
-    ctx.openNewPane( readerF, title + " ramos dobrados (|lag|; +lag | -lag espelhado)" );
+    openPaneWhenIdle( ctx, readerF, title + " ramos dobrados (|lag|; +lag | -lag espelhado)" );
+  }
+
+  /**
+   * SeaView reads one data set at a time and silently ignores a pane opened while the previous one is
+   * still being read. Wait until SeaView is idle (private flag myIsReadProcessOngoing, read by
+   * reflection; if not available, a fixed delay) and then open the pane.
+   */
+  private static void openPaneWhenIdle( csIPluginContext ctx, cseis.seis.csISeismicReader reader, String title ) {
+    final java.lang.reflect.Field flag = readFlag( ctx.getParentFrame() );
+    final long t0 = System.currentTimeMillis();
+    javax.swing.Timer timer = new javax.swing.Timer( 200, null );
+    timer.setInitialDelay( 300 );
+    timer.addActionListener( e -> {
+      long waited = System.currentTimeMillis() - t0;
+      boolean busy;
+      if( flag != null ) {
+        try { busy = flag.getBoolean( ctx.getParentFrame() ); }
+        catch( Exception ex ) { busy = waited < 2000; }
+      }
+      else {
+        busy = waited < 2000;
+      }
+      if( busy && waited < 60000 ) return;
+      ( (javax.swing.Timer)e.getSource() ).stop();
+      System.err.println( "[ClockXcorr] abrindo painel: " + title );
+      ctx.openNewPane( reader, title );
+    } );
+    timer.start();
+  }
+  private static java.lang.reflect.Field readFlag( Object seaview ) {
+    for( Class<?> c = ( seaview == null ) ? null : seaview.getClass(); c != null; c = c.getSuperclass() ) {
+      try {
+        java.lang.reflect.Field f = c.getDeclaredField( "myIsReadProcessOngoing" );
+        f.setAccessible( true );
+        return f;
+      }
+      catch( Exception e ) { /* try superclass */ }
+    }
+    System.err.println( "[ClockXcorr] SeaView sem myIsReadProcessOngoing: usando espera fixa de 2 s" );
+    return null;
   }
 
   //--------------------------------------------------------------------
@@ -390,6 +436,9 @@ public class csPluginClockXcorr implements csISeaViewPlugin {
     JButton close = new JButton( "Fechar" );
     close.addActionListener( e -> dialog.dispose() );
     JPanel buttons = new JPanel( new FlowLayout( FlowLayout.RIGHT ) );
+    JButton help = new JButton( "Ajuda" );
+    help.addActionListener( e -> csClockHelp.show( dialog ) );
+    buttons.add( help );
     buttons.add( save );
     buttons.add( close );
     dialog.getContentPane().add( new JScrollPane( area ), BorderLayout.CENTER );
