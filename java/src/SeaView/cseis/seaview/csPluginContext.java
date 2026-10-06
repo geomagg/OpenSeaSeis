@@ -45,7 +45,19 @@ public class csPluginContext implements csIPluginContext {
   public String getTitle() { return myBundle.getTitle(); }
   @Override
   public void openNewPane( csISeismicReader reader, String title ) {
-    mySeaView.readData( reader, title, SeaView.FORMAT_CSEIS, true );
+    // SeaView reads one data set at a time and silently ignores a request made while a read is
+    // still running (e.g. a plugin opening two panes in a row): wait until the previous read is done.
+    if( !mySeaView.isReadProcessOngoing() ) {
+      mySeaView.readData( reader, title, SeaView.FORMAT_CSEIS, true );
+      return;
+    }
+    javax.swing.Timer timer = new javax.swing.Timer( 150, null );
+    timer.addActionListener( e -> {
+      if( mySeaView.isReadProcessOngoing() ) return;
+      timer.stop();
+      mySeaView.readData( reader, title, SeaView.FORMAT_CSEIS, true );
+    } );
+    timer.start();
   }
   @Override
   public void addProcessingStep( csIProcessing proc ) {

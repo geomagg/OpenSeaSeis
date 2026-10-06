@@ -1201,6 +1201,10 @@ public class SeaView extends JFrame implements csFileMenuListener {
    * @param openInNewPane Open new data set in new pane (replace data in current if 'false')
    * @return true if operation was successful.
    */
+  /** @return true while a data set is still being read into a pane (a new read request would be ignored) */
+  public boolean isReadProcessOngoing() {
+    return myIsReadProcessOngoing;
+  }
   public synchronized boolean readData( csISeismicReader reader, String filenamePath, int fileFormat, boolean openInNewPane ) {
     csSeisPaneBundle bundle = null;
     boolean renameActivePane = true;
