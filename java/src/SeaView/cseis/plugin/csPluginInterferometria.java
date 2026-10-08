@@ -46,6 +46,7 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     public double ramWin = 0.5;                 // running absolute mean window [s]
     public boolean whiten = false;
     public double winLen = 0.0;                 // stacking window [s], 0 = whole trace
+    public double overlap = 0.0;                // overlap between stacking windows [%]
     public boolean symmetric = false;           // sum of causal and acausal sides
     public boolean normalize = true;            // each output trace / max |C|
   }
@@ -97,6 +98,7 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     JTextField textFmax   = new JTextField( fmt( myParams.fmax ), 6 );
     JTextField textLag    = new JTextField( fmt( Math.min( myParams.maxLag, (ns-1)*dt ) ), 6 );
     JTextField textWin    = new JTextField( fmt( myParams.winLen ), 6 );
+    JTextField textOverlap = new JTextField( fmt( myParams.overlap ), 6 );
     JCheckBox  boxSym     = new JCheckBox( "Somar os dois lados: C(t) + C(-t)", myParams.symmetric );
     JCheckBox  boxNormOut = new JCheckBox( "Normalizar cada correlação (máx = 1)", myParams.normalize );
     // offset is created in the VSG pane if the data do not have it (e.g. data read by INPUT_HDF5)
@@ -113,6 +115,7 @@ public class csPluginInterferometria implements csISeaViewPlugin {
       if( ih >= 0 ) textRefVal.setText( buf.headerValues(0)[ih].toString() );
     });
     textRam.setToolTipText( "Janela da média absoluta móvel [s] (ex.: metade do maior período de interesse)" );
+    textOverlap.setToolTipText( "Sobreposição entre janelas consecutivas [%] (0 a 90). Ex.: 5 min, janelas de 60 s, 50% -> 9 janelas. Com a janela quase retangular usada aqui, a sobreposição quase não melhora a razão sinal/ruído e aumenta o tempo" );
     textWin.setToolTipText( "Os traços são cortados em janelas deste comprimento e as correlações empilhadas. 0 = traço inteiro" );
     comboPair.setToolTipText( "Cada traço é correlacionado com a referência que tem o mesmo valor deste cabeçalho (ex.: chan = componente)" );
 
@@ -124,6 +127,7 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     row = addRow( p, row, "Banda [Hz]  fmin", textFmin, new JLabel(" fmax"), textFmax );
     row = addRow( p, row, "", boxWhiten, null, null );
     row = addRow( p, row, "Lag máximo [s]", textLag, new JLabel(" janelas p/ empilhar [s]"), textWin );
+    row = addRow( p, row, "", null, new JLabel(" sobreposição [%]"), textOverlap );
     row = addRow( p, row, "", boxSym, null, null );
     row = addRow( p, row, "", boxNormOut, null, null );
     row = addRow( p, row, "", boxOffset, null, null );
@@ -139,6 +143,7 @@ public class csPluginInterferometria implements csISeaViewPlugin {
       myParams.fmax   = Double.parseDouble( textFmax.getText().trim() );
       myParams.ramWin = Double.parseDouble( textRam.getText().trim() );
       myParams.winLen = Double.parseDouble( textWin.getText().trim() );
+      myParams.overlap = Double.parseDouble( textOverlap.getText().trim() );
     }
     catch( NumberFormatException e ) {
       JOptionPane.showMessageDialog( ctx.getParentFrame(), "Número inválido", "Interferometria", JOptionPane.ERROR_MESSAGE );
@@ -154,6 +159,7 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     boolean setOffset = boxOffset.isSelected() && hasXY;
 
     if( myParams.maxLag <= 0 ) { error( ctx, "O lag máximo deve ser > 0" ); return; }
+    if( myParams.overlap < 0 || myParams.overlap > 90 ) { error( ctx, "A sobreposição deve estar entre 0 e 90%" ); return; }
     if( myParams.fmax <= myParams.fmin ) { error( ctx, "fmax deve ser > fmin" ); return; }
 
     //--- Reference trace(s)
@@ -211,7 +217,8 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     ctx.openNewPane( reader, title );
 
     StringBuilder msg = new StringBuilder();
-    msg.append( String.format( Locale.US, "%d correlações, %d janela(s) de %.4g s empilhada(s), lag máximo %.4g s.%n", ntr, res.nWindows, res.winSamples * dt, res.nl * dt ) );
+    msg.append( String.format( Locale.US, "%d correlações, %d janela(s) de %.4g s empilhada(s) (início a cada %.4g s, sobreposição %.0f%%), lag máximo %.4g s.%n",
+        ntr, res.nWindows, res.winSamples * dt, res.hopSamples * dt, res.nWindows > 1 ? 100.0 * ( 1.0 - (double)res.hopSamples / res.winSamples ) : 0.0, res.nl * dt ) );
     msg.append( myParams.symmetric ? "Lados somados: eixo de tempo = lag 0 ... lag máximo.\n"
                                    : String.format( Locale.US, "Dois lados: o lag 0 está em %.0f ms no eixo de tempo (lags negativos acima).%n", res.nl * dt * 1000.0 ) );
     msg.append( "Fonte(s) virtual(is): " );
@@ -258,6 +265,7 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     public int nl;            // max lag in samples
     public int nWindows;
     public int winSamples;
+    public int hopSamples;
   }
 
   /**
@@ -272,10 +280,13 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     int nw = ( p.winLen > 0 ) ? Math.min( ns, (int)Math.round( p.winLen / dt ) ) : ns;
     nw = Math.max( nw, 4 );
     int nl = Math.min( (int)Math.round( p.maxLag / dt ), nw - 1 );
-    int nwin = Math.max( 1, ns / nw );
+    // Windows start every 'hop' samples (overlap in %); a window must fit completely in the trace
+    int hop = Math.max( 1, (int)Math.round( nw * ( 1.0 - Math.max( 0.0, Math.min( 90.0, p.overlap ) ) / 100.0 ) ) );
+    if( nw >= ns ) hop = nw;
+    int nwin = Math.max( 1, 1 + ( ns - nw ) / hop );
     int nfft = 1;
     while( nfft < nw + nl ) nfft *= 2;
-    r.nl = nl; r.nWindows = nwin; r.winSamples = nw;
+    r.nl = nl; r.nWindows = nwin; r.winSamples = nw; r.hopSamples = hop;
 
     double df = 1.0 / ( nfft * dt );
     double fmax = ( p.fmax > 0 ) ? Math.min( p.fmax, 0.5/dt ) : 0.5/dt;
@@ -294,7 +305,7 @@ public class csPluginInterferometria implements csISeaViewPlugin {
       refIm[i] = new double[nwin][];
       for( int w = 0; w < nwin; w++ ) {
         double[] re = new double[nfft], im = new double[nfft];
-        preprocess( samples[i], w * nw, nw, taper, mask, nram, p, re, im );
+        preprocess( samples[i], w * hop, nw, taper, mask, nram, p, re, im );
         refRe[i][w] = re;
         refIm[i][w] = im;
       }
@@ -315,7 +326,7 @@ public class csPluginInterferometria implements csISeaViewPlugin {
           System.arraycopy( refIm[i][w], 0, xi, 0, nfft );
         }
         else {
-          preprocess( samples[i], w * nw, nw, taper, mask, nram, p, xr, xi );
+          preprocess( samples[i], w * hop, nw, taper, mask, nram, p, xr, xi );
         }
         for( int f = 0; f < nfft; f++ ) {          // conj(R) * X
           re[f] = rr[f] * xr[f] + ri[f] * xi[f];
