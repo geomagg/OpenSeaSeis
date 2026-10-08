@@ -37,6 +37,7 @@ public class csPluginInterferometria implements csISeaViewPlugin {
   private static int ourCounter = 0;
   private final Params myParams = new Params();
   private String myRefHdr = null, myRefVal = null, myPairHdr = null;
+  private boolean myDisp = false;
 
   /** Computation parameters (all times in seconds, frequencies in Hz) */
   public static final class Params {
@@ -105,6 +106,9 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     boolean hasXY = ctx.getHeaderIndex("rec_x") >= 0 && ctx.getHeaderIndex("rec_y") >= 0;
     JCheckBox  boxOffset  = new JCheckBox( "offset = distância à fonte virtual (rec_x, rec_y)", hasXY );
     boxOffset.setEnabled( hasXY );
+    JCheckBox  boxDisp    = new JCheckBox( "Imagem de dispersão f-c do VSG (velocidade de fase x frequência)", hasXY && myDisp );
+    boxDisp.setEnabled( hasXY );
+    boxDisp.setToolTipText( "Phase-shift sobre as correlações do VSG, usando a distância à fonte virtual (rec_x, rec_y). Também disponível no menu: Dispersão f-c (painel ativo)" );
     comboRef.setSelectedItem( myRefHdr );
     comboPair.setSelectedItem( ctx.getHeaderIndex( myPairHdr ) >= 0 ? myPairHdr : NONE );
     comboNorm.setSelectedIndex( myParams.tempNorm );
@@ -131,6 +135,7 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     row = addRow( p, row, "", boxSym, null, null );
     row = addRow( p, row, "", boxNormOut, null, null );
     row = addRow( p, row, "", boxOffset, null, null );
+    row = addRow( p, row, "", boxDisp, null, null );
 
     int option = JOptionPane.showConfirmDialog( ctx.getParentFrame(), p, "Interferometria (VSG) - " + ctx.getTitle(),
                                                 JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE );
@@ -157,6 +162,7 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     myRefVal  = textRefVal.getText().trim();
     myPairHdr = (String)comboPair.getSelectedItem();
     boolean setOffset = boxOffset.isSelected() && hasXY;
+    myDisp = boxDisp.isSelected() && hasXY;
 
     if( myParams.maxLag <= 0 ) { error( ctx, "O lag máximo deve ser > 0" ); return; }
     if( myParams.overlap < 0 || myParams.overlap > 90 ) { error( ctx, "A sobreposição deve estar entre 0 e 90%" ); return; }
@@ -198,15 +204,17 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     }
     csVirtualSeismicReader reader = new csVirtualSeismicReader( nout, defsOut.length, ctx.getSampleInt(), defsOut, ctx.getVerticalDomain() );
     csTraceBuffer out = reader.retrieveTraceBuffer();
+    double[] dist = new double[ntr];
+    Arrays.fill( dist, Double.NaN );
     for( int i = 0; i < ntr; i++ ) {
       csHeader[] hin = buf.headerValues( i );
+      if( hasXY && refOf[i] >= 0 ) {
+        csHeader[] hr = buf.headerValues( refOf[i] );
+        dist[i] = Math.hypot( hin[ihX].doubleValue() - hr[ihX].doubleValue(), hin[ihY].doubleValue() - hr[ihY].doubleValue() );
+      }
       csHeader[] hout = new csHeader[defsOut.length];
       for( int ih = 0; ih < defsOut.length; ih++ ) hout[ih] = ( ih < hin.length && ih < defs.length ) ? new csHeader( hin[ih] ) : new csHeader( 0 );
-      if( setOffset && refOf[i] >= 0 ) {
-        csHeader[] hr = buf.headerValues( refOf[i] );
-        double d = Math.hypot( hin[ihX].doubleValue() - hr[ihX].doubleValue(), hin[ihY].doubleValue() - hr[ihY].doubleValue() );
-        hout[ihOff].setValue( d );
-      }
+      if( setOffset && refOf[i] >= 0 ) hout[ihOff].setValue( dist[i] );
       out.addTrace( res.corr[i], hout );
     }
     ourCounter++;
@@ -228,6 +236,27 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     if( numNoRef > 0 ) msg.append( String.format( "%n%d traços sem referência com o mesmo %s: saída zerada.", numNoRef, myPairHdr ) );
     if( setOffset ) msg.append( "\nCabeçalho 'offset' = distância à fonte virtual (use Sort by header em offset)." );
     JOptionPane.showMessageDialog( ctx.getParentFrame(), msg.toString(), "Interferometria (VSG)", JOptionPane.INFORMATION_MESSAGE );
+
+    //--- f-c dispersion image of the VSG (one image per virtual source / pairing value)
+    if( myDisp ) {
+      for( java.util.Map.Entry<String,Integer> e : refByPair.entrySet() ) {
+        java.util.List<Integer> idx = new java.util.ArrayList<Integer>();
+        for( int i = 0; i < ntr; i++ ) if( refOf[i] == e.getValue() ) idx.add( i );
+        float[][] tr = new float[idx.size()][];
+        double[] off = new double[idx.size()];
+        for( int k = 0; k < tr.length; k++ ) { tr[k] = res.corr[idx.get( k )]; off[k] = dist[idx.get( k )]; }
+        csDispersionFC.Params dp = new csDispersionFC.Params();
+        dp.oneSided = myParams.symmetric;
+        dp.lag0 = myParams.symmetric ? 0 : res.nl;
+        dp.side = csDispersionFC.SIDE_SUM;
+        dp.fmin = Math.max( myParams.fmin, 0.0 );
+        dp.fmax = Math.min( myParams.fmax, 0.5 / dt );
+        dp.dmin = 1.0;                       // the virtual source itself (offset 0) carries no velocity information
+        String t = "VSG" + ourCounter + " " + ctx.getTitle() + " (fonte " + myRefHdr + "=" + myRefVal
+                   + ( ihPair >= 0 ? ", " + myPairHdr + " " + e.getKey() : "" ) + ")";
+        csPluginDispersao.show( ctx, tr, off, dt, dp, t, "distância à fonte virtual" );
+      }
+    }
   }
 
   private static int addRow( JPanel p, int row, String label, JComponent c1, JComponent c2, JComponent c3 ) {
