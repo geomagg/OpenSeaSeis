@@ -283,31 +283,40 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     double[] taper = tukey( nw, 0.05 );
     int nram = Math.max( 1, (int)Math.round( p.ramWin / dt ) );
 
-    // Pre-processed spectra are computed once per trace and window
-    double[][][] specRe = new double[ntr][][], specIm = new double[ntr][][];
-    boolean[] needed = new boolean[ntr];
-    for( int i = 0; i < ntr; i++ ) if( refOf[i] >= 0 ) { needed[i] = true; needed[refOf[i]] = true; }
+    // Only the spectra of the reference traces are kept (all windows); every other trace is
+    // pre-processed window by window and discarded, so memory does not grow with the number of traces
+    boolean[] isRef = new boolean[ntr];
+    for( int i = 0; i < ntr; i++ ) if( refOf[i] >= 0 ) isRef[refOf[i]] = true;
+    double[][][] refRe = new double[ntr][][], refIm = new double[ntr][][];
     for( int i = 0; i < ntr; i++ ) {
-      if( !needed[i] ) continue;
-      specRe[i] = new double[nwin][];
-      specIm[i] = new double[nwin][];
+      if( !isRef[i] ) continue;
+      refRe[i] = new double[nwin][];
+      refIm[i] = new double[nwin][];
       for( int w = 0; w < nwin; w++ ) {
         double[] re = new double[nfft], im = new double[nfft];
         preprocess( samples[i], w * nw, nw, taper, mask, nram, p, re, im );
-        specRe[i][w] = re;
-        specIm[i][w] = im;
+        refRe[i][w] = re;
+        refIm[i][w] = im;
       }
     }
 
     int nout = p.symmetric ? nl + 1 : 2 * nl + 1;
     r.corr = new float[ntr][nout];
     double[] re = new double[nfft], im = new double[nfft], acc = new double[2*nl+1];
+    double[] xr = new double[nfft], xi = new double[nfft];
     for( int i = 0; i < ntr; i++ ) {
       int k = refOf[i];
       if( k < 0 ) continue;
       Arrays.fill( acc, 0.0 );
       for( int w = 0; w < nwin; w++ ) {
-        double[] xr = specRe[i][w], xi = specIm[i][w], rr = specRe[k][w], ri = specIm[k][w];
+        double[] rr = refRe[k][w], ri = refIm[k][w];
+        if( isRef[i] ) {
+          System.arraycopy( refRe[i][w], 0, xr, 0, nfft );
+          System.arraycopy( refIm[i][w], 0, xi, 0, nfft );
+        }
+        else {
+          preprocess( samples[i], w * nw, nw, taper, mask, nram, p, xr, xi );
+        }
         for( int f = 0; f < nfft; f++ ) {          // conj(R) * X
           re[f] = rr[f] * xr[f] + ri[f] * xi[f];
           im[f] = rr[f] * xi[f] - ri[f] * xr[f];
