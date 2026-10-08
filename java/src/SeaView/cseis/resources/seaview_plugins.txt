@@ -8,3 +8,4 @@ cseis.plugins.csSpkHMOPlugin
 cseis.plugins.csSpkSortPlugin
 
 cseis.plugins.csSpkClockPlugin
+cseis.plugins.csSpkInterferometriaPlugin
