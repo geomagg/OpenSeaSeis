@@ -51,6 +51,10 @@ public class csPluginDispersao implements csISeaViewPlugin {
     // lag 0: from the VSG title ("lag 0 em ... ms"); VSG with both sides summed starts at lag 0
     double lag0ms = csDispersionFC.lag0FromTitle( ctx.getTitle() );
     boolean summedVsg = ctx.getTitle() != null && ctx.getTitle().contains( "lados somados" );
+    // VSG written by the SeaSeis module INTERFEROMETRIA: headers lag0_ms and xc_sides
+    int ihLag0 = ctx.getHeaderIndex( "lag0_ms" ), ihSides = ctx.getHeaderIndex( "xc_sides" );
+    if( ihLag0 >= 0 ) lag0ms = buf.headerValues( 0 )[ihLag0].doubleValue();
+    if( ihSides >= 0 && buf.headerValues( 0 )[ihSides].intValue() == 1 ) summedVsg = true;
     if( lag0ms < 0 ) lag0ms = 0;
     if( myParams.fmax <= 0 || myParams.fmax > 0.5 / dt ) myParams.fmax = Math.min( 2.5, 0.5 / dt );
 

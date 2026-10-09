@@ -63,6 +63,7 @@
   INPUT_SEGD          1.0
   INPUT_SEISPAK       1.0
   INPUT_SINEWAVE      1.0
+  INTERFEROMETRIA     1.0
   KILL                1.0
   KILL_ENS            1.0
   LMO                 1.0
