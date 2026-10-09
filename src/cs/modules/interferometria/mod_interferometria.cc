@@ -238,41 +238,48 @@ void exec_mod_interferometria_( csTraceGather* traceGather, int* port, int* numT
   // One time chunk: accumulate conj(R) X for all traces
   if( ntr > 0 ) {
     vars->numEnsembles++;
-    map<double,int> refOf;    // pair value -> trace index of the reference
+    // References: every trace of the virtual source in this chunk (there may be several files/times)
+    vector<int> refs;
+    vector<double> tStart( ntr, 0.0 );
     for( int i = 0; i < ntr; i++ ) {
       csTraceHeader const* h = traceGather->trace(i)->getTraceHeader();
+      if( vars->hdrId_t1 >= 0 ) tStart[i] = h->intValue( vars->hdrId_t1 ) + ( vars->hdrId_t1us >= 0 ? h->intValue( vars->hdrId_t1us ) * 1.0e-6 : 0.0 );
       if( fabs( h->doubleValue( vars->hdrId_ref ) - vars->refValue ) > 1.0e-6 * std::max( 1.0, fabs( vars->refValue ) ) ) continue;
+      refs.push_back( i );
       double pv = ( vars->hdrId_pair >= 0 ) ? h->doubleValue( vars->hdrId_pair ) : 0.0;
-      if( refOf.find( pv ) == refOf.end() ) {
-        refOf[pv] = i;
-        if( vars->setOffset && vars->refXY->find( pv ) == vars->refXY->end() ) {
-          (*vars->refXY)[pv] = make_pair( h->doubleValue( vars->hdrId_x ), h->doubleValue( vars->hdrId_y ) );
-        }
+      if( vars->setOffset && vars->refXY->find( pv ) == vars->refXY->end() ) {
+        (*vars->refXY)[pv] = make_pair( h->doubleValue( vars->hdrId_x ), h->doubleValue( vars->hdrId_y ) );
       }
     }
-    if( refOf.empty() ) {
+    map<int,int> refOf;       // used references (trace index -> trace index), for the window loop
+    if( refs.empty() ) {
       vars->numNoRef++;
       if( vars->numNoRef <= 5 ) writer->warning( "Time chunk %d (%d traces): no trace of the virtual source, chunk skipped", vars->numEnsembles, ntr );
     }
     else {
-      // Accumulator of each trace
+      // Accumulator and reference of each trace: same pairing value AND same start time (within dt/2)
       vector<int> accOf( ntr, -1 ), refTrc( ntr, -1 );
       for( int i = 0; i < ntr; i++ ) {
         csTraceHeader const* h = traceGather->trace(i)->getTraceHeader();
         double pv = ( vars->hdrId_pair >= 0 ) ? h->doubleValue( vars->hdrId_pair ) : 0.0;
-        map<double,int>::const_iterator r = refOf.find( pv );
-        if( r == refOf.end() ) { vars->numNoRefTraces++; continue; }
-        // Same time window as the reference?
-        if( vars->hdrId_t1 >= 0 ) {
-          csTraceHeader const* hr = traceGather->trace( r->second )->getTraceHeader();
-          double t  = h->intValue( vars->hdrId_t1 )  + ( vars->hdrId_t1us >= 0 ? h->intValue( vars->hdrId_t1us )  * 1.0e-6 : 0.0 );
-          double tr = hr->intValue( vars->hdrId_t1 ) + ( vars->hdrId_t1us >= 0 ? hr->intValue( vars->hdrId_t1us ) * 1.0e-6 : 0.0 );
-          if( fabs( t - tr ) > 0.5 * vars->dt ) {
-            vars->numTimeMismatch++;
-            if( vars->numTimeMismatch <= 5 ) writer->warning( "Chunk %d: trace %d starts %.3f s from the reference: not correlated (define ensembles by time_samp1)", vars->numEnsembles, i+1, t - tr );
-            continue;
-          }
+        int rk = -1;
+        bool samePair = false;
+        double bestDt = 1.0e30;
+        for( size_t k = 0; k < refs.size(); k++ ) {
+          csTraceHeader const* hr = traceGather->trace( refs[k] )->getTraceHeader();
+          double pr = ( vars->hdrId_pair >= 0 ) ? hr->doubleValue( vars->hdrId_pair ) : 0.0;
+          if( pr != pv ) continue;
+          samePair = true;
+          double d = fabs( tStart[i] - tStart[ refs[k] ] );
+          if( d < bestDt ) { bestDt = d; rk = refs[k]; }
         }
+        if( !samePair ) { vars->numNoRefTraces++; continue; }
+        if( bestDt > 0.5 * vars->dt ) {
+          vars->numTimeMismatch++;
+          if( vars->numTimeMismatch <= 5 ) writer->warning( "Chunk %d: trace %d: no reference trace starting at the same time (closest %.4f s): not correlated. Use ALIGN_TIME", vars->numEnsembles, i+1, bestDt );
+          continue;
+        }
+        refOf[rk] = rk;
         double nv = h->doubleValue( vars->hdrId_node );
         pair<double,double> key( pv, nv );
         map< pair<double,double>, int >::iterator it = vars->accIndex->find( key );
@@ -292,7 +299,7 @@ void exec_mod_interferometria_( csTraceGather* traceGather, int* port, int* numT
         }
         else ia = it->second;
         accOf[i] = ia;
-        refTrc[i] = r->second;
+        refTrc[i] = rk;
       }
       // Window by window: reference spectra first, then every trace
       vector<double> xr( nfft ), xi( nfft );
@@ -300,7 +307,7 @@ void exec_mod_interferometria_( csTraceGather* traceGather, int* port, int* numT
       map< int, bool > rDead;
       for( int w = 0; w < vars->nwin; w++ ) {
         int i0 = w * vars->hop;
-        for( map<double,int>::const_iterator r = refOf.begin(); r != refOf.end(); ++r ) {
+        for( map<int,int>::const_iterator r = refOf.begin(); r != refOf.end(); ++r ) {
           vector<double>& re = rRe[r->second];
           vector<double>& im = rIm[r->second];
           re.resize( nfft ); im.resize( nfft );
@@ -473,7 +480,8 @@ void params_mod_interferometria_( csParamDef* pdef ) {
   pdef->setModule( "INTERFEROMETRIA", "Virtual shot gather (VSG) from ambient noise",
     "Cross-correlation of every trace with the virtual source (reference trace with the same 'pair' header value), "
     "stacked over time windows and over the whole input. Each ensemble must be one time chunk with all nodes "
-    "(e.g. SORT by time_samp1 and ENS_DEFINE header time_samp1); without ensembles the whole input is one chunk. "
+    "(e.g. ENS_DEFINE header fileno after INPUT_HDF5); without ensembles the whole input is one chunk. "
+    "An ensemble may also hold several time chunks: each trace is correlated with the virtual-source trace that starts at the same time (within dt/2). "
     "Output: one correlation per node and pair value, at the end of the input. Times in seconds. "
     "Same algorithm as the SeaView plugin 'Interferometria'." );
 

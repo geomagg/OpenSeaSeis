@@ -154,8 +154,10 @@ void exec_mod_align_time_( csTraceGather* traceGather, int* port, int* numTrcToK
       }
     }
     if( !any ) { vars->numNoTime += ntr; vars->numTraces += ntr; return; }
-    if( vars->cut && tEnd <= tNew ) {
-      writer->warning( "Ensemble with %d traces: the traces do not overlap in time (cut: all samples zero)", ntr );
+    if( tEnd <= tNew ) {
+      writer->error( "Ensemble with %d traces: the traces do not overlap in time (start %.3f s after the earliest end).\n"
+                     "The ensemble probably contains several files/time chunks: define one ensemble per file, e.g. ENS_DEFINE header fileno",
+                     ntr, tNew - tEnd );
     }
   }
 
