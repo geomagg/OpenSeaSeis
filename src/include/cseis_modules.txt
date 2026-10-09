@@ -20,6 +20,7 @@
 # While the above is true for Linux, for Windows it IS currently required to list all modules to make them available in Seaseis.
 #
 
+  ALIGN_TIME          1.0
   ATTRIBUTE           1.0
   BEAM_FORMING        1.0
   BIN                 1.0
