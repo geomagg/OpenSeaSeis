@@ -38,6 +38,8 @@ public class csPluginInterferometria implements csISeaViewPlugin {
   private final Params myParams = new Params();
   private String myRefHdr = null, myRefVal = null, myPairHdr = null;
   private boolean myDisp = false;
+  private boolean myAsym = false;
+  private final csAssimetria.Params myAsymParams = new csAssimetria.Params();
 
   /** Computation parameters (all times in seconds, frequencies in Hz) */
   public static final class Params {
@@ -109,6 +111,13 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     JCheckBox  boxDisp    = new JCheckBox( "Imagem de dispersão f-c do VSG (velocidade de fase x frequência)", hasXY && myDisp );
     boxDisp.setEnabled( hasXY );
     boxDisp.setToolTipText( "Phase-shift sobre as correlações do VSG, usando a distância à fonte virtual (rec_x, rec_y). Também disponível no menu: Dispersão f-c (painel ativo)" );
+    JCheckBox  boxAsym    = new JCheckBox( "Assimetria causal × acausal  A = (E+ − E−)/(E+ + E−)", myAsym );
+    boxAsym.setToolTipText( "Compara a energia dos lags positivos e negativos na janela de chegada (x/c máx − folga ... x/c mín + folga). Campo difuso: A ~ 0. Grava o cabeçalho 'asym' e abre um gráfico de A ao longo da linha" );
+    JTextField textAsCmin = new JTextField( fmt( myAsymParams.cmin ), 5 ), textAsCmax = new JTextField( fmt( myAsymParams.cmax ), 5 );
+    JTextField textAsPad  = new JTextField( fmt( myAsymParams.pad ), 4 );
+    textAsCmin.setToolTipText( "Velocidade mínima da janela de chegada [m/s] (ex.: Scholte 450; modos da água 1500)" );
+    textAsCmax.setToolTipText( "Velocidade máxima da janela de chegada [m/s] (ex.: Scholte 1600; modos da água 3000)" );
+    textAsPad.setToolTipText( "Folga [s] antes e depois da janela (~ um período)" );
     comboRef.setSelectedItem( myRefHdr );
     comboPair.setSelectedItem( ctx.getHeaderIndex( myPairHdr ) >= 0 ? myPairHdr : NONE );
     comboNorm.setSelectedIndex( myParams.tempNorm );
@@ -136,6 +145,12 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     row = addRow( p, row, "", boxNormOut, null, null );
     row = addRow( p, row, "", boxOffset, null, null );
     row = addRow( p, row, "", boxDisp, null, null );
+    row = addRow( p, row, "", boxAsym, null, null );
+    JPanel asRow = new JPanel( new java.awt.FlowLayout( java.awt.FlowLayout.LEFT, 4, 0 ) );
+    asRow.add( new JLabel( "janela de chegada: c mín" ) ); asRow.add( textAsCmin );
+    asRow.add( new JLabel( "c máx [m/s]" ) ); asRow.add( textAsCmax );
+    asRow.add( new JLabel( "folga [s]" ) ); asRow.add( textAsPad );
+    row = addRow( p, row, "", asRow, null, null );
 
     int option = JOptionPane.showConfirmDialog( ctx.getParentFrame(), p, "Interferometria (VSG) - " + ctx.getTitle(),
                                                 JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE );
@@ -149,6 +164,9 @@ public class csPluginInterferometria implements csISeaViewPlugin {
       myParams.ramWin = Double.parseDouble( textRam.getText().trim() );
       myParams.winLen = Double.parseDouble( textWin.getText().trim() );
       myParams.overlap = Double.parseDouble( textOverlap.getText().trim() );
+      myAsymParams.cmin = Double.parseDouble( textAsCmin.getText().trim().replace( ',', '.' ) );
+      myAsymParams.cmax = Double.parseDouble( textAsCmax.getText().trim().replace( ',', '.' ) );
+      myAsymParams.pad  = Double.parseDouble( textAsPad.getText().trim().replace( ',', '.' ) );
     }
     catch( NumberFormatException e ) {
       JOptionPane.showMessageDialog( ctx.getParentFrame(), "Número inválido", "Interferometria", JOptionPane.ERROR_MESSAGE );
@@ -163,6 +181,8 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     myPairHdr = (String)comboPair.getSelectedItem();
     boolean setOffset = boxOffset.isSelected() && hasXY;
     myDisp = boxDisp.isSelected() && hasXY;
+    myAsym = boxAsym.isSelected();
+    if( myAsym && ( myAsymParams.cmin <= 0 || myAsymParams.cmax <= myAsymParams.cmin ) ) { error( ctx, "Assimetria: 0 < c mín < c máx" ); return; }
 
     if( myParams.maxLag <= 0 ) { error( ctx, "O lag máximo deve ser > 0" ); return; }
     if( myParams.overlap < 0 || myParams.overlap > 90 ) { error( ctx, "A sobreposição deve estar entre 0 e 90%" ); return; }
@@ -191,7 +211,30 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     //--- Compute
     float[][] samples = new float[ntr][];
     for( int i = 0; i < ntr; i++ ) samples[i] = buf.samples( i );
-    Result res = compute( samples, refOf, dt, myParams );
+    Result res;
+    csAssimetria.Result asym = null;
+    if( myAsym ) {
+      // asymmetry needs both sides, before summing and normalizing
+      Params p2 = copy( myParams );
+      p2.symmetric = false;
+      p2.normalize = false;
+      res = compute( samples, refOf, dt, p2 );
+      double[] xs = null, ys = null;
+      if( hasXY ) {
+        int ix = ctx.getHeaderIndex( "rec_x" ), iy = ctx.getHeaderIndex( "rec_y" );
+        xs = new double[ntr]; ys = new double[ntr];
+        for( int i = 0; i < ntr; i++ ) { xs[i] = buf.headerValues(i)[ix].doubleValue(); ys[i] = buf.headerValues(i)[iy].doubleValue(); }
+      }
+      String[] gNames = refByPair.keySet().toArray( new String[0] );
+      java.util.List<Integer> gRefs = new java.util.ArrayList<Integer>( refByPair.values() );
+      int[] group = new int[ntr];
+      for( int i = 0; i < ntr; i++ ) group[i] = refOf[i] >= 0 ? gRefs.indexOf( refOf[i] ) : -1;
+      asym = csAssimetria.compute( res.corr, res.nl, dt, refOf, xs, ys, myAsymParams, gNames, group );
+      for( int i = 0; i < ntr; i++ ) res.corr[i] = finish( res.corr[i], res.nl, myParams.symmetric, myParams.normalize );
+    }
+    else {
+      res = compute( samples, refOf, dt, myParams );
+    }
 
     //--- Output pane
     int nout = res.corr[0].length;
@@ -201,6 +244,16 @@ public class csPluginInterferometria implements csISeaViewPlugin {
       defsOut = Arrays.copyOf( defs, defs.length + 1 );
       defsOut[defs.length] = new csHeaderDef( "offset", "Distance to the virtual source [m] (Interferometria)", cseis.jni.csJNIDef.TYPE_DOUBLE );
       ihOff = defs.length;
+    }
+    int ihAsym = -1;
+    if( asym != null ) {
+      ihAsym = -1;
+      for( int ih = 0; ih < defsOut.length; ih++ ) if( "asym".equals( defsOut[ih].name ) ) ihAsym = ih;
+      if( ihAsym < 0 ) {
+        defsOut = Arrays.copyOf( defsOut, defsOut.length + 1 );
+        defsOut[defsOut.length - 1] = new csHeaderDef( "asym", "Causal/acausal asymmetry (E+ - E-)/(E+ + E-) (Interferometria)", cseis.jni.csJNIDef.TYPE_DOUBLE );
+        ihAsym = defsOut.length - 1;
+      }
     }
     csVirtualSeismicReader reader = new csVirtualSeismicReader( nout, defsOut.length, ctx.getSampleInt(), defsOut, ctx.getVerticalDomain() );
     csTraceBuffer out = reader.retrieveTraceBuffer();
@@ -215,6 +268,7 @@ public class csPluginInterferometria implements csISeaViewPlugin {
       csHeader[] hout = new csHeader[defsOut.length];
       for( int ih = 0; ih < defsOut.length; ih++ ) hout[ih] = ( ih < hin.length && ih < defs.length ) ? new csHeader( hin[ih] ) : new csHeader( 0 );
       if( setOffset && refOf[i] >= 0 ) hout[ihOff].setValue( dist[i] );
+      if( ihAsym >= 0 ) hout[ihAsym].setValue( Double.isNaN( asym.asym[i] ) ? 0.0 : asym.asym[i] );
       out.addTrace( res.corr[i], hout );
     }
     ourCounter++;
@@ -235,7 +289,18 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     }
     if( numNoRef > 0 ) msg.append( String.format( "%n%d traços sem referência com o mesmo %s: saída zerada.", numNoRef, myPairHdr ) );
     if( setOffset ) msg.append( "\nCabeçalho 'offset' = distância à fonte virtual (use Sort by header em offset)." );
+    if( asym != null ) msg.append( "\nCabeçalho 'asym' = assimetria causal × acausal (0 na fonte virtual)." );
     JOptionPane.showMessageDialog( ctx.getParentFrame(), msg.toString(), "Interferometria (VSG)", JOptionPane.INFORMATION_MESSAGE );
+
+    //--- asymmetry window
+    if( asym != null ) {
+      int ihTrc = ctx.getHeaderIndex( "trcno" );
+      double[] trc = new double[ntr];
+      for( int i = 0; i < ntr; i++ ) trc[i] = ihTrc >= 0 ? buf.headerValues(i)[ihTrc].doubleValue() : i + 1;
+      csAssimetria.Frame af = new csAssimetria.Frame( asym, myAsymParams, "VSG" + ourCounter + " " + ctx.getTitle(), trc );
+      af.setLocationRelativeTo( ctx.getParentFrame() );
+      af.setVisible( true );
+    }
 
     //--- f-c dispersion image of the VSG (one image per virtual source / pairing value)
     if( myDisp ) {
@@ -257,6 +322,28 @@ public class csPluginInterferometria implements csISeaViewPlugin {
         csPluginDispersao.show( ctx, tr, off, dt, dp, t, "distância à fonte virtual" );
       }
     }
+  }
+
+  private static Params copy( Params a ) {
+    Params b = new Params();
+    b.maxLag = a.maxLag; b.fmin = a.fmin; b.fmax = a.fmax; b.tempNorm = a.tempNorm; b.ramWin = a.ramWin;
+    b.whiten = a.whiten; b.winLen = a.winLen; b.overlap = a.overlap; b.symmetric = a.symmetric; b.normalize = a.normalize;
+    return b;
+  }
+  /** Two-sided correlation (lag 0 at nl) -> output trace: optional sum of both sides, optional max normalization */
+  static float[] finish( float[] two, int nl, boolean symmetric, boolean normalize ) {
+    float[] o;
+    if( symmetric ) {
+      o = new float[nl + 1];
+      for( int j = 0; j <= nl; j++ ) o[j] = two[nl + j] + two[nl - j];
+    }
+    else o = two.clone();
+    if( normalize ) {
+      float m = 0f;
+      for( float v : o ) m = Math.max( m, Math.abs( v ) );
+      if( m > 0f ) for( int j = 0; j < o.length; j++ ) o[j] /= m;
+    }
+    return o;
   }
 
   private static int addRow( JPanel p, int row, String label, JComponent c1, JComponent c2, JComponent c3 ) {
