@@ -1,0 +1,205 @@
+<html>
+<head><title>Difusividade do campo - ajuda</title></head>
+<body style="font-family: sans-serif; font-size: 11pt; margin: 10px">
+
+<h2>Difusividade do campo: Bessel J<sub>0</sub> (SPAC), f-k, simetria por hora e atraso entre vizinhos</h2>
+
+<p>Menu <b>Plugins &gt; Difusividade do campo (Bessel, f-k, simetria por hora)...</b></p>
+<p><b>Entrada:</b> o <b>ruído bruto</b> (não o VSG), com <b>um traço por receptor</b>, registros longos
+e os cabeçalhos <tt>rec_x</tt> e <tt>rec_y</tt>. Todos os traços devem <b>começar no mesmo instante</b>.
+No <tt>npy2cseis.py</tt>, use <tt>--xy header_offset.txt</tt>. Se o painel tiver vários componentes,
+escolha um em <i>Usar só traços com</i> (por exemplo <tt>chan = 1</tt>).</p>
+
+<p><b>O que é calculado:</b> o ruído é cortado em janelas (padrão 120 s). Cada janela recebe o mesmo
+pré-processamento da Interferometria: banda, média absoluta móvel e branqueamento. Para cada par de
+receptores (i, j), o espectro cruzado é somado em todas as janelas:</p>
+<p style="margin-left: 30px"><tt>S<sub>ij</sub>(f) = &Sigma; conj(X<sub>i</sub>) X<sub>j</sub></tt>
+&nbsp;&nbsp;&nbsp; e a coerência &nbsp;&nbsp;
+<tt>&gamma;<sub>ij</sub>(f) = S<sub>ij</sub> / &radic;(S<sub>ii</sub> S<sub>jj</sub>)</tt></p>
+<p>As somas também são guardadas por <b>bloco</b> (padrão 3600 s, ou seja, hora a hora). A posição
+<b>s</b> ao longo da linha vai do primeiro ao último traço do painel. O azimute de +s aparece no topo
+da janela.</p>
+
+<p>A ideia central de todas as abas é a mesma. Num <b>campo difuso</b>, a energia chega de todas as
+direções, com potência parecida e fontes independentes. Então a coerência entre dois receptores a uma
+distância r segue a função de Bessel de ordem zero:</p>
+<p style="margin-left: 30px"><b>Re &gamma;(r) = J<sub>0</sub>(2&pi; f r / c)</b>
+&nbsp;&nbsp; (campo difuso) &nbsp;&nbsp;&nbsp; contra &nbsp;&nbsp;&nbsp;
+<b>cos(2&pi; f r / c)</b> &nbsp;&nbsp; (uma onda plana andando ao longo da linha)</p>
+<p>A J<sub>0</sub> é a média, sobre todos os azimutes, dos cossenos de cada onda plana. Ela oscila e
+<b>decai</b> com a distância. O cosseno oscila <b>sem decair</b>. É a mesma hipótese que faz a
+correlação convergir para a função de Green dos dois lados (C(&tau;) &rarr; G(&tau;) + G(-&tau;)),
+que é o que justifica somar os dois lados do VSG.</p>
+
+<hr>
+<h3>Aba 1: Bessel J<sub>0</sub> (SPAC)</h3>
+<p>SPAC (<i>SPatial AutoCorrelation</i>, Aki 1957) mede a velocidade de fase c(f) ajustando
+J<sub>0</sub> à coerência medida. É uma segunda curva de dispersão, independente do phase-shift.</p>
+
+<h4>Painel de cima: coerência &times; distância, numa frequência</h4>
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><td><b>Pontos cinza</b></td><td>Re &gamma; de cada par de receptores (eixo x = distância entre eles).</td></tr>
+<tr><td><b>Pontos pretos</b></td><td>Média dos pares a cada &Delta;x (o espaçamento típico). É o dado que é ajustado.</td></tr>
+<tr><td><b>Curva verde</b></td><td>J<sub>0</sub>(2&pi;fr/c): o que se espera num campo difuso.</td></tr>
+<tr><td><b>Curva vermelha tracejada</b></td><td>cos(2&pi;fr/c): o que se espera se toda a energia andasse ao longo da linha.</td></tr>
+<tr><td><b>Círculos laranja</b></td><td>Im &gamma; vezes o sinal de (s<sub>j</sub> - s<sub>i</sub>), média por distância. Perto de 0: campo simétrico. Diferente de 0: mais energia andando num sentido (em kr pequeno, negativo = energia andando para +s).</td></tr>
+</table>
+<p>A linha de baixo mostra c, o comprimento de onda, o <b>erro rms</b> para J<sub>0</sub> e para o
+cosseno (no mesmo c) e o c estimado pelo primeiro zero da coerência (kr = 2,405).
+<b>Critério:</b> erro de J<sub>0</sub> bem menor que o do cosseno (diferença &gt; 0,2) e menor que
+0,25-0,3 indica <b>campo difuso</b>.</p>
+<p>Para escolher a frequência, use a lista ou clique na imagem de baixo. Para testar outra
+velocidade, digite c e tecle Enter. O botão <b>c ajustado</b> volta ao melhor ajuste.</p>
+
+<h4>Painel de baixo: imagem SPAC (frequência &times; velocidade)</h4>
+<p>Para cada frequência (cada coluna), o programa testa todas as velocidades c e mede o quanto
+J<sub>0</sub>(2&pi;fr/c) se ajusta aos pontos pretos. A cor é normalizada coluna a coluna:
+<b>amarelo = melhor c</b> naquela frequência, roxo = pior. Funciona como uma imagem f-c, só que
+feita com a coerência.</p>
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><td><b>Pontos brancos cheios</b></td><td>Melhor c, com J<sub>0</sub> explicando claramente melhor que o cosseno.</td></tr>
+<tr><td><b>Pontos brancos vazados</b></td><td>Melhor c, mas o ajuste é fraco.</td></tr>
+<tr><td><b>X magenta</b></td><td>c pelo primeiro zero da coerência medida.</td></tr>
+<tr><td><b>Linha tracejada e área cinza</b></td><td>Limite do espaçamento: abaixo dela, o primeiro zero de J<sub>0</sub> fica a menos de &Delta;x e todos os pares já estão depois do zero, então o SPAC <b>não consegue medir c</b> (alias espacial do SPAC). c<sub>lim</sub> = 2&pi; f &Delta;x / 2,405 &asymp; 1300&middot;f para &Delta;x = 500 m.</td></tr>
+</table>
+
+<h4>Como ler: exemplo da linha 1281 (23 nós a 500 m)</h4>
+<ul>
+<li><b>Ramo de 0,05 a ~0,32 Hz, de ~1900 até ~700 m/s: a Scholte fundamental.</b> Os valores batem
+com a curva picada no phase-shift (0,16 Hz ~1600; 0,24 Hz ~1100; 0,28 Hz ~830; 0,32 Hz ~710 m/s).
+É uma confirmação independente da curva de dispersão, e nessa faixa pode ser usada como segunda curva
+na inversão de Vs.</li>
+<li><b>Ramo rápido (~3300 m/s em 0,25 Hz até ~1800 m/s em 1,3 Hz):</b> energia com velocidade de fase
+acima da da água. São os modos guiados/vazados da lâmina d'água, a mesma energia rápida que domina o
+f-k acima de ~0,5 Hz.</li>
+<li><b>Salto em ~0,33 Hz:</b> os pontos brancos passam da Scholte para o ramo rápido. A onda rápida
+passa a dominar a coerência e, pouco acima, a Scholte cai abaixo da linha tracejada (a 0,45 Hz a
+Scholte, ~480 m/s, já está na área cinza). Com 500 m entre receptores, <b>o SPAC só vê a Scholte até
+~0,35-0,4 Hz</b>. Acima disso use o phase-shift do VSG.</li>
+<li><b>Acima de ~1,4 Hz</b> não há pontos: a coerência entre receptores a 500 m é baixa demais.</li>
+<li><b>Vale da J<sub>0</sub> que não aparece</b> (ex.: 0,29 Hz, c = 754 m/s, vale previsto em ~1,5 km,
+mas os dados ficam positivos até ~3 km). Na mesma frequência há <b>duas ondas</b>: a Scholte e a
+rápida. A coerência é a soma de duas J<sub>0</sub>, e a da onda rápida decai devagar e mantém a curva
+positiva. Por isso o <i>c pelo 1º zero</i> (~2800 m/s) segue o ramo rápido. Energia chegando na
+vertical (k &asymp; 0) tem o mesmo efeito: soma uma constante positiva.</li>
+</ul>
+<p><b>Opção do diálogo "Ajustar a&middot;J<sub>0</sub> + b":</b> ajusta também uma amplitude
+<i>a</i> (o ruído incoerente reduz a coerência) e um termo constante <i>b</i> (energia vertical ou
+uma onda muito rápida). Ajuda a estimar c quando a coerência fica positiva longe. Para o
+<b>teste de difusividade</b> (J<sub>0</sub> contra cosseno), deixe desligado: com a e b livres, o
+cosseno também se ajusta e o teste perde força.</p>
+
+<hr>
+<h3>Aba 2: f-k</h3>
+<p>Potência do ruído em frequência &times; número de onda <b>ao longo da linha</b>, calculada a partir
+dos espectros cruzados de todas as janelas (beamforming), normalizada por frequência.</p>
+<ul>
+<li><b>k &gt; 0:</b> energia andando no sentido de +s (azimute indicado no rodapé), isto é, chegando
+do lado oposto. <b>k &lt; 0:</b> o contrário.</li>
+<li><b>Campo difuso:</b> energia nos dois lados, em k = &plusmn;f/c. <b>Campo direcional:</b> só um lado.</li>
+<li>Energia em k &asymp; 0 = onda chegando na vertical (ou de lado, perpendicular à linha). A linha não
+distingue as duas.</li>
+<li>Linhas brancas tracejadas: &plusmn;f/c<sub>min</sub> e &plusmn;f/c<sub>max</sub> da janela de
+simetria (aba 3). Linhas verticais: a banda dessa janela. Pontos magenta: &plusmn;f/c do SPAC.</li>
+<li>O número de onda de Nyquist é 1/(2&Delta;x). Energia mais lenta que 2&Delta;x&middot;f dobra
+(aliasing) e reaparece do outro lado.</li>
+<li>Uma linha só não resolve o azimute verdadeiro: k é a projeção na linha. Uma onda de lado parece
+infinitamente rápida.</li>
+</ul>
+
+<hr>
+<h3>Aba 3: Simetria por hora</h3>
+<p>Para cada bloco (hora), o índice</p>
+<p style="margin-left: 30px"><b>D = (P<sub>+</sub> - P<sub>-</sub>) / (P<sub>+</sub> + P<sub>-</sub>)</b></p>
+<p>onde P<sub>&plusmn;</sub> é a energia do f-k na banda de análise (f1-f2) e entre as velocidades
+c<sub>min</sub>-c<sub>max</sub>, com k &gt; 0 e k &lt; 0 (cada frequência com o mesmo peso).</p>
+<ul>
+<li><b>D = 0:</b> simétrico; <b>D = &plusmn;1:</b> toda a energia de um lado. Faixa sombreada: |D| &lt; 0,3.</li>
+<li><b>D &gt; 0:</b> mais energia andando para +s (chegando do lado do primeiro traço).</li>
+<li>Gráfico de baixo: erro rms da coerência para J<sub>0</sub> (verde, com o c do registro todo) e para
+o cosseno (vermelho, mesmo c), por bloco. Verde bem abaixo do vermelho em todas as horas = o campo é
+difuso o tempo todo, e não só na média.</li>
+<li><b>Para que serve:</b> ver se a direção do ruído muda com o tempo (vento, ondas, tempestades,
+navios, atividade na plataforma) e escolher as horas mais simétricas para empilhar o VSG.</li>
+<li>Linha 1281 (5 h): D &asymp; +0,42, estável (desvio 0,02). Mais energia andando para WNW, isto é,
+chegando de ESE. J<sub>0</sub> &asymp; 0,19 contra cosseno &asymp; 0,64 em todas as horas.</li>
+</ul>
+<p>Use a banda e as velocidades da onda que interessa: Scholte da linha 1281, 0,15-0,45 Hz e
+450-1600 m/s; modos da água, por exemplo 0,8-2 Hz e 1500-3000 m/s.</p>
+
+<hr>
+<h3>Aba 4: Atraso entre vizinhos (relógio)</h3>
+<p>Para cada par de receptores vizinhos ao longo da linha, o atraso &tau; vem da
+<b>inclinação da fase da coerência</b> com a frequência, na banda dos atrasos (padrão 0,10-0,35 Hz,
+onde receptores próximos são bem coerentes):</p>
+<p style="margin-left: 30px"><tt>fase(&gamma;<sub>ij</sub>) &asymp; -2&pi; f &tau;</tt> &nbsp;&nbsp;&rarr;&nbsp;&nbsp; &tau; = atraso de j em relação a i</p>
+<p>Parte desse atraso é propagação, que é proporcional à distância. Ela é removida com a mediana de
+&tau;/&Delta;s de todos os pares:</p>
+<p style="margin-left: 30px"><b>excesso = &tau; - (mediana de &tau;/&Delta;s) &times; &Delta;s</b></p>
+<ul>
+<li><b>Erro de relógio ou de alinhamento dos tempos:</b> é um atraso <b>constante</b>. Aparece com o
+mesmo valor em <b>todos os blocos</b> e em qualquer banda.</li>
+<li><b>Campo de ondas:</b> muda de bloco para bloco e de banda para banda.</li>
+<li><b>Suspeito (&#9888;, em negrito):</b> |excesso| acima de max(60 ms, 3&sigma;) no registro todo e
+com o mesmo sinal em pelo menos 75% dos blocos. Na tabela, vermelho = atraso positivo e azul =
+negativo; a intensidade é proporcional ao excesso.</li>
+<li><b>Como interpretar o padrão:</b> um salto num par e o salto oposto no par seguinte = <b>um</b>
+receptor deslocado. Um salto isolado = <b>todos</b> os receptores de um lado do salto deslocados.</li>
+<li>Linha 1281: o par <b>18-19</b> tem +142 ms no registro todo e +103 a +185 ms em cada hora, e todos
+os outros ficam abaixo de ~60 ms. Ou seja, um deslocamento de tempo entre os nós 1-18 e 19-23.
+~100 ms é <b>uma amostra</b> do dado reamostrado a 100 ms. Confira o tempo inicial dos arquivos
+HDF5 desses nós e o alinhamento feito antes da reamostragem.</li>
+</ul>
+<p>Efeito de um erro de relógio &delta; na coerência: &gamma; = J<sub>0</sub>(kr)&middot;e<sup>-i2&pi;f&delta;</sup>.
+A parte real fica multiplicada por cos(2&pi;f&delta;): <b>os zeros de J<sub>0</sub> não mudam</b>, e c
+continua certo. Aparece uma parte imaginária falsa, igual a uma assimetria. Em baixa frequência o
+efeito é pequeno: a 0,3 Hz, &delta; = 100 ms reduz Re &gamma; em ~3%. Para tempos de chegada,
+assimetria par a par e triangulação, porém, o erro precisa ser corrigido.
+O plugin <b>Clock: correlação cruzada dos nodes</b> mede o erro de cada nó pela simetria do VSG e
+serve de segunda verificação.</p>
+
+<hr>
+<h3>Parâmetros do diálogo</h3>
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><td><b>Usar só traços com</b></td><td>Filtra por cabeçalho (ex.: <tt>chan = 1</tt>). <i>(todos)</i> usa o painel inteiro.</td></tr>
+<tr><td><b>Rótulo dos receptores</b></td><td>Cabeçalho usado para nomear os receptores nas tabelas (ex.: <tt>rcv</tt>).</td></tr>
+<tr><td><b>Normalização temporal, banda, branqueamento</b></td><td>Como na Interferometria. Padrão: média absoluta móvel de 30 s, 0,05-2,5 Hz, branqueado.</td></tr>
+<tr><td><b>Janela [s]</b></td><td>Comprimento de cada janela do espectro cruzado (padrão 120 s). Resolução em frequência ~ 1/janela. As frequências vizinhas são agrupadas em até 200 valores.</td></tr>
+<tr><td><b>Bloco [s]</b></td><td>Duração de cada bloco das abas 3 e 4 (3600 = hora a hora; 0 = registro todo).</td></tr>
+<tr><td><b>Simetria: banda e velocidade</b></td><td>Janela do f-k usada no índice D.</td></tr>
+<tr><td><b>Atrasos entre vizinhos: banda</b></td><td>Banda da inclinação da fase. Use onde a coerência entre vizinhos é alta.</td></tr>
+<tr><td><b>SPAC: busca de c</b></td><td>Faixa de velocidades testadas (escala logarítmica, 300 valores).</td></tr>
+<tr><td><b>Ajustar a&middot;J<sub>0</sub> + b</b></td><td>Veja a aba 1. Desligado = teste de difusividade puro.</td></tr>
+</table>
+
+<h3>Saídas</h3>
+<ul>
+<li><b>Exportar CSVs...</b> grava quatro arquivos com o nome base escolhido:
+<tt>_spac.csv</tt> (f, c ajustado, rms J<sub>0</sub>, rms cos, c pelo 1º zero, a, b, ajuste claro),
+<tt>_simetria.csv</tt> (D e erros por bloco), <tt>_atrasos.csv</tt> (atraso e excesso por par e
+por bloco) e <tt>_fk.csv</tt> (matriz k &times; f).</li>
+<li><b>Salvar PNG da aba...</b> grava a aba que está aberta.</li>
+<li>O cursor sobre os gráficos mostra os valores na barra do topo.</li>
+</ul>
+
+<h3>Cuidados</h3>
+<ul>
+<li>Traços <b>sem o mesmo início</b> invalidam a coerência e os atrasos. Se <tt>time_samp1</tt>
+variar entre os traços, o plugin avisa no topo. Alinhe antes (ALIGN_TIME, ou corte por tempo ao
+ler os HDF5).</li>
+<li>Poucas janelas (&lt; ~50) deixam a coerência ruidosa: o nível de ruído de |&gamma;| é ~1/&radic;(janelas).</li>
+<li>Uma linha só não separa ondas vindas de lado de ondas verticais, nem dá o azimute verdadeiro. Para
+isso é preciso uma segunda linha ou um arranjo 2D.</li>
+</ul>
+
+<h3>Referências</h3>
+<ul>
+<li>Aki, K. (1957). Space and time spectra of stationary stochastic waves, with special reference to
+microtremors. <i>Bull. Earthquake Res. Inst.</i> 35, 415-456.</li>
+<li>Ekström, G., Abers, G. A., Webb, S. C. (2009). Determination of surface-wave phase velocities
+across USArray from noise and Aki's spectral formulation. <i>Geophys. Res. Lett.</i> 36, L18301.</li>
+<li>Stehly, L., Campillo, M., Shapiro, N. M. (2007). Traveltime measurements from noise correlation:
+stability and detection of instrumental time-shifts. <i>Geophys. J. Int.</i> 171, 223-230.</li>
+</ul>
+</body>
+</html>

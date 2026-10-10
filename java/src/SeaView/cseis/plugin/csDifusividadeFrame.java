@@ -70,11 +70,13 @@ public final class csDifusividadeFrame extends JFrame {
 
     JLabel head = new JLabel( header() );
     head.setBorder( BorderFactory.createEmptyBorder( 6, 10, 4, 10 ) );
-    JButton csv = new JButton( "Exportar CSVs..." ), png = new JButton( "Salvar PNG da aba..." );
+    JButton csv = new JButton( "Exportar CSVs..." ), png = new JButton( "Salvar PNG da aba..." ), help = new JButton( "Ajuda" );
+    help.setToolTipText( "Como ler cada aba (também no menu Help)" );
+    help.addActionListener( e -> csClockHelp.showDifusividade( this ) );
     csv.addActionListener( e -> exportCsv() );
     png.addActionListener( e -> savePng() );
     JPanel bar = new JPanel( new FlowLayout( FlowLayout.LEFT, 8, 2 ) );
-    bar.add( csv ); bar.add( png ); bar.add( myStatus );
+    bar.add( help ); bar.add( csv ); bar.add( png ); bar.add( myStatus );
     JPanel top = new JPanel( new BorderLayout() );
     top.add( head, BorderLayout.CENTER ); top.add( bar, BorderLayout.SOUTH );
 

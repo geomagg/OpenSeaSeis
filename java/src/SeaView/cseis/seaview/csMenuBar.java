@@ -104,7 +104,8 @@ public class csMenuBar extends JMenuBar {
   private JMenuItem menuSelection;
   
   private JMenuItem menuAbout;
-  private JMenuItem menuHelpClock;  
+  private JMenuItem menuHelpClock;
+  private JMenuItem menuHelpDifusividade;  
   private JMenuItem menuImage;
   private JMenuItem menuImageAs;
 
@@ -215,7 +216,8 @@ public class csMenuBar extends JMenuBar {
     menuSEGYSetup = new JMenuItem("Segy/SU setup...");
 
     menuAbout   = new JMenuItem("About");
-    menuHelpClock = new JMenuItem("Clock dos nodes (OBN)...");   
+    menuHelpClock = new JMenuItem("Clock dos nodes (OBN)...");
+    menuHelpDifusividade = new JMenuItem("Difusividade do campo (SPAC, f-k, simetria, atrasos)...");   
 
     menuHighlight    = new JCheckBoxMenuItem("Highlight trace", false);
     menuCrosshairOn  = new JCheckBoxMenuItem("Show crosshair", false);
@@ -333,6 +335,7 @@ public class csMenuBar extends JMenuBar {
     menuSEGY.add(menuSEGYBinHdr);
 
     menuHelp.add(menuHelpClock);
+    menuHelp.add(menuHelpDifusividade);
     menuHelp.addSeparator();
     menuHelp.add(menuAbout);
     
@@ -720,6 +723,7 @@ public class csMenuBar extends JMenuBar {
     });
 
     menuHelpClock.addActionListener( e -> cseis.plugin.csClockHelp.show( mySeaView ) );
+    menuHelpDifusividade.addActionListener( e -> cseis.plugin.csClockHelp.showDifusividade( mySeaView ) );
     menuAbout.addActionListener( new ActionListener() {
       @Override
       public void actionPerformed( ActionEvent e ) {
@@ -758,6 +762,7 @@ public class csMenuBar extends JMenuBar {
     menuExit     .setToolTipText("Exit");
     menuSelection.setToolTipText("Select traces to display");
     menuAbout    .setToolTipText("About");
+    menuHelpDifusividade.setToolTipText("Como ler o plugin Difusividade do campo: Bessel J0 (SPAC), f-k, simetria por hora e atraso entre vizinhos");
     menuHelpClock.setToolTipText("Como usar e interpretar os plugins de clock dos nodes (alinhamento e correlação cruzada)");
 
     myMenuProcessingClear.setToolTipText( "Clear applied processing steps" );
