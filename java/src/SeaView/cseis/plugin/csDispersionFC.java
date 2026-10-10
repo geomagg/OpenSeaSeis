@@ -176,6 +176,13 @@ public final class csDispersionFC {
     Arrays.sort( xs );
     img.dmin = xs[0];
     img.dmax = xs[xs.length - 1];
+    if( img.dmax - img.dmin < 1.0 ) {
+      throw new IllegalArgumentException( String.format( java.util.Locale.US,
+          "Todos os %d traços têm a mesma distância (%.0f m): o cabeçalho escolhido não é a distância à fonte virtual.%n"
+          + "Use o cabeçalho 'offset' do VSG (na Interferometria, marque 'offset = distância à fonte virtual';%n"
+          + "para isso os dados de entrada precisam de rec_x e rec_y, p.ex. npy2cseis.py com --xy header_offset.txt).",
+          xs.length, img.dmin ) );
+    }
     List<Double> dd = new ArrayList<Double>();
     for( int i = 1; i < xs.length; i++ ) if( xs[i] - xs[i - 1] > 1.0 ) dd.add( xs[i] - xs[i - 1] );
     if( dd.isEmpty() ) img.dx = 0;

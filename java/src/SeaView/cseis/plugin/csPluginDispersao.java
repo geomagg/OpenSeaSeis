@@ -84,6 +84,10 @@ public class csPluginDispersao implements csISeaViewPlugin {
     JPanel p = new JPanel( new GridBagLayout() );
     int row = 0;
     row = addRow( p, row, "Cabeçalho de distância", comboOff, new JLabel( " (valor absoluto)" ), null );
+    if( ctx.getHeaderIndex( "offset" ) < 0 ) {
+      row = addRow( p, row, "", new JLabel( "<html><font color='#b00000'>Este painel não tem o cabeçalho 'offset'. A imagem f-c deve ser calculada sobre um VSG<br>"
+          + "com offset = distância à fonte virtual (Interferometria com rec_x/rec_y).</font></html>" ), null, null );
+    }
     row = addRow( p, row, "Lag 0 no tempo [s]", tLag0, new JLabel( " lado" ), comboSide );
     row = addRow( p, row, "Lag máximo usado [s]", tTmax, new JLabel( " (0 = traço todo)" ), null );
     row = addRow( p, row, "Frequência [Hz]  mín", tFmin, new JLabel( " máx" ), tFmax );
