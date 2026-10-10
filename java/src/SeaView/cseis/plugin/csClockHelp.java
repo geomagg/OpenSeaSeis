@@ -18,7 +18,7 @@ import javax.swing.SwingUtilities;
 
 /**
  * Non-modal help windows with pages of cseis/resources: help_clock.html (Help menu and the 'Ajuda' button of
- * the clock plugin), help_interferometria.html, help_dispersao.html and help_difusividade.html. One window per page.
+ * the clock plugin), help_espectrograma.html, help_interferometria.html, help_dispersao.html and help_difusividade.html. One window per page.
  */
 public class csClockHelp {
   public static final String TITLE = "Ajuda - Clock dos nodes (OBN)";
@@ -34,6 +34,9 @@ public class csClockHelp {
   }
   public static void showDispersao( Component parent ) {
     show( parent, "Ajuda - Dispersão f-c (phase-shift)", "help_dispersao.html" );
+  }
+  public static void showEspectrograma( Component parent ) {
+    show( parent, "Ajuda - Espectrograma", "help_espectrograma.html" );
   }
   /** Help of the plugin Difusividade do campo */
   public static void showDifusividade( Component parent ) {

@@ -22,7 +22,8 @@ import java.util.ServiceLoader;
  * <p>
  * Fontes, nesta ordem:
  * <ol>
- * <li>Plugins embutidos, listados em {@code cseis/resources/seaview_plugins.txt}.</li>
+ * <li>Plugins embutidos, listados em {@code cseis/resources/seaview_plugins.txt}. Nesse arquivo, uma linha
+ * {@code -} insere uma linha separadora no menu, e {@code - Título} insere a linha e um título de grupo.</li>
  * <li>Plugins no classpath registrados via {@code META-INF/services}.</li>
  * <li>Jars em {@code -Dseaview.plugins.dir=...} (várias pastas separadas por ':' ou ';').</li>
  * <li>Jars em {@code <pasta do aplicativo>/plugins}.</li>
@@ -33,6 +34,7 @@ import java.util.ServiceLoader;
 public final class csPluginManager {
   private static final List<String> loadedNames = new ArrayList<>();
   private static final List<String> failures = new ArrayList<>();
+  private static final String SEPARATOR = "\u0000sep";
 
   private csPluginManager() {}
 
@@ -53,7 +55,20 @@ public final class csPluginManager {
       failures.add( e.getMessage() );
     }
 
-    for( csSeaViewPlugin p : plugins.values() ) {
+    for( Map.Entry<String,csSeaViewPlugin> e : plugins.entrySet() ) {
+      csSeaViewPlugin p = e.getValue();
+      if( p == null ) {                                   // separator line of seaview_plugins.txt
+        int n = menu.getMenuComponentCount();
+        if( n > 0 && !( menu.getMenuComponent( n - 1 ) instanceof javax.swing.JSeparator ) ) menu.addSeparator();
+        String title = e.getKey().substring( SEPARATOR.length() ).replaceFirst( "^[0-9]+:", "" ).trim();
+        if( !title.isEmpty() ) {
+          JMenuItem t = new JMenuItem( title );
+          t.setEnabled( false );
+          t.setFont( t.getFont().deriveFont( java.awt.Font.BOLD | java.awt.Font.ITALIC ) );
+          menu.add( t );
+        }
+        continue;
+      }
       String name = safeName( p );
       try {
         p.install( new csPluginContext( seaview, menu, name ) );
@@ -82,6 +97,10 @@ public final class csPluginManager {
       while( (line = r.readLine()) != null ) {
         line = line.trim();
         if( line.isEmpty() || line.startsWith( "#" ) ) continue;
+        if( line.startsWith( "-" ) ) {                    // "-" = separator, "- Title" = separator + group title
+          plugins.put( SEPARATOR + plugins.size() + ":" + line.replaceFirst( "^-+", "" ).trim(), null );
+          continue;
+        }
         try {
           Object obj = Class.forName( line, true, loader ).getDeclaredConstructor().newInstance();
           plugins.putIfAbsent( line, (csSeaViewPlugin)obj );

@@ -1,12 +1,15 @@
-# Plugins embutidos no SeaView (um nome de classe por linha).
+# Plugins embutidos no SeaView (um nome de classe por linha), na ordem do menu Plugins.
 # Para adicionar um plugin: crie a classe em java/src/SeaView/cseis/plugins/ e liste aqui.
+# Uma linha "-" insere uma linha separadora; "- Título" insere a linha e um título de grupo.
 cseis.plugins.csPanelInfoPlugin
 cseis.plugins.csExportNpyPlugin
-cseis.plugins.csSpectrogramPlugin
 cseis.plugins.csSpkFXPlugin
 cseis.plugins.csSpkHMOPlugin
 cseis.plugins.csSpkSortPlugin
 
+- Análise de ruído (sísmica passiva)
+cseis.plugins.csSpkAlinharPlugin
+cseis.plugins.csSpectrogramPlugin
 cseis.plugins.csSpkClockPlugin
 cseis.plugins.csSpkInterferometriaPlugin
 cseis.plugins.csSpkDispersaoPlugin

@@ -1,0 +1,85 @@
+<html>
+<head><title>Espectrograma - ajuda</title></head>
+<body style="font-family: sans-serif; font-size: 11pt; margin: 10px">
+
+<h2>Espectrograma: clique num traço</h2>
+
+<p>Menu <b>Plugins &gt; Espectrograma: clique num traço</b> (atalho <b>Ctrl+Shift+S</b>) liga e
+desliga o modo. Com o modo ligado, um <b>clique esquerdo</b> num traço de qualquer painel abre a
+janela do espectrograma daquele traço, ou atualiza a que já está aberta. Desligue o modo para
+voltar a usar o clique normalmente.</p>
+
+<p>A janela mostra em cima a <b>forma de onda</b> do traço (já com o pré-processamento) e embaixo o
+<b>espectrograma</b>: tempo &times; frequência, com a cor em dB. No topo aparecem os cabeçalhos do
+traço, o início em UTC (de <tt>time_samp1</tt>), dt, a duração e os parâmetros usados. Um aviso em
+vermelho indica que o traço já estava filtrado ou com AGC no SeaView.</p>
+
+<h3>1. Como é calculado (STFT)</h3>
+<ol>
+<li><b>Antes da STFT:</b> remove a média ou a tendência linear e aplica, se pedido, passa-alta e/ou
+passa-baixa <b>Butterworth de 4 polos, fase zero</b> (ida e volta).</li>
+<li>Corta o traço em janelas de <b>N amostras</b> com <b>janela de Hann</b>, deslocadas conforme a sobreposição.</li>
+<li>Em cada janela calcula a <b>densidade espectral de potência unilateral</b>, em dB (10&middot;log<sub>10</sub>).</li>
+<li>A cor é relativa ao máximo do traço: <b>0 dB = máximo</b>, e a escala vai até -(faixa) dB.</li>
+</ol>
+
+<h3>2. Resolução: tempo &times; frequência</h3>
+<p>Janela de N amostras com intervalo dt:</p>
+<p style="margin-left: 30px"><b>&Delta;f = 1 / (N&middot;dt)</b> &nbsp;&nbsp;&nbsp; e duração da janela &nbsp; <b>T = N&middot;dt</b></p>
+<p>Janela maior dá mais resolução em frequência e menos no tempo. Para ver uma frequência f com
+alguns ciclos por janela, use T &ge; ~5/f.</p>
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><th>Objetivo</th><th>dt</th><th>Janela sugerida</th><th>&Delta;f</th></tr>
+<tr><td>Microssismo (0,05-0,5 Hz)</td><td>100 ms</td><td>1024-4096 amostras (100-400 s)</td><td>0,01-0,0025 Hz</td></tr>
+<tr><td>Modos da água (0,2-3 Hz)</td><td>100 ms</td><td>256-1024 (25-100 s)</td><td>0,04-0,01 Hz</td></tr>
+<tr><td>Linhas tonais, máquinas, navios (1-50 Hz)</td><td>2 ms</td><td>4096-16384 (8-33 s)</td><td>0,12-0,03 Hz</td></tr>
+</table>
+<p>A janela inicial é ~1/16 do traço (até 4096 amostras). A sobreposição (padrão 75%) só suaviza o
+eixo do tempo e não muda a resolução.</p>
+
+<h3>3. Controles</h3>
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><td><b>Antes da STFT</b></td><td>Remover média, tendência linear ou nada.</td></tr>
+<tr><td><b>Passa-alta / passa-baixa [Hz]</b></td><td>Vazio ou 0 = sem filtro. Enter aplica. Um passa-alta tira a deriva de muito baixa frequência, que domina a escala de cor.</td></tr>
+<tr><td><b>Janela, sobreposição</b></td><td>Veja a seção 2.</td></tr>
+<tr><td><b>f mín, f máx, escala f</b></td><td>Faixa exibida. A escala <b>log</b> ajuda a ver o microssismo e as frequências altas juntos.</td></tr>
+<tr><td><b>Faixa [dB]</b></td><td>Contraste: 40 dB realça só os picos; 80-120 dB mostra o fundo.</td></tr>
+<tr><td><b>Cores</b></td><td>Paleta.</td></tr>
+<tr><td><b>Nova janela a cada clique</b></td><td>Abre uma janela por traço, com os mesmos parâmetros, para comparar receptores.</td></tr>
+<tr><td><b>Salvar PNG...</b></td><td>Grava o gráfico.</td></tr>
+<tr><td><b>Cursor</b></td><td>Mostra t, f e dB no espectrograma, e t e amplitude na forma de onda.</td></tr>
+</table>
+
+<h3>4. O que procurar no ruído do fundo do mar</h3>
+<ul>
+<li><b>Microssismo primário</b> (~0,05-0,1 Hz) e <b>secundário</b> (~0,1-0,35 Hz): faixas largas cuja
+energia sobe e desce com o estado do mar ao longo das horas. O secundário costuma ser o mais forte. É
+a principal fonte da Scholte da interferometria.</li>
+<li><b>Ressonâncias da lâmina d'água:</b> faixas de energia que começam nas frequências de corte dos
+modos guiados, f<sub>n</sub> = (n - &frac12;)&middot;Vw / (2h&radic;(1 - Vw&sup2;/Vp&sup2;)). Na linha
+1281 (h &asymp; 2040 m, Vp &asymp; 2000 m/s): 0,28, 0,83, 1,39 e 1,95 Hz.</li>
+<li><b>Linhas horizontais finas e contínuas</b> (frequência fixa no tempo) e seus <b>harmônicos</b>:
+máquinas, bombas, geradores, hélices. São candidatas a fonte de ruído de plataforma ou navio
+(FPSO). Use o dado bruto de 2 ms até ~50 Hz e uma janela longa.</li>
+<li><b>Linhas que variam devagar de frequência:</b> navio passando (efeito Doppler, mudança de rotação).</li>
+<li><b>Riscas verticais repetidas:</b> tiros de airgun (sísmica ativa), com intervalo regular.</li>
+<li><b>Riscas verticais isoladas e fortes:</b> terremotos ou transientes. A normalização temporal da
+Interferometria (média absoluta móvel) existe para reduzir o peso deles.</li>
+<li><b>Pulsos em ~20 Hz</b> repetidos a cada ~10-30 s: baleia-fin. ~15-30 Hz em sequências: outras baleias.</li>
+<li><b>Lacunas ou trechos sem energia:</b> falhas de gravação ou trechos zerados.</li>
+</ul>
+<p><b>Compare receptores</b> (com <i>Nova janela a cada clique</i>): uma linha tonal mais forte nos
+receptores mais próximos de uma estrutura indica de onde ela vem. Uma faixa igual em todos os
+receptores aponta para fonte distante ou para a própria coluna d'água.</p>
+
+<h3>5. Cuidados</h3>
+<ul>
+<li>O espectrograma usa o traço como está no painel. Se o painel já tem filtro/AGC (menu Active pane),
+o aviso vermelho aparece no topo e os níveis em dB não são os originais.</li>
+<li>Dado reamostrado (por exemplo de 2 ms para 100 ms) só mostra até a nova Nyquist (5 Hz). Linhas
+tonais de máquinas costumam estar acima disso.</li>
+<li>A cor é relativa ao máximo do traço: compare níveis entre receptores com cuidado, porque cada
+janela tem a sua referência de 0 dB.</li>
+</ul>
+</body>
+</html>

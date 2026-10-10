@@ -455,8 +455,12 @@ public class csSpectrogramPlugin implements csSeaViewPlugin {
       newWin.addActionListener( e -> myNewWindowPerClick = newWin.isSelected() );
       JButton save = new JButton( "Salvar PNG..." );
       save.addActionListener( e -> savePng() );
+      JButton help = new JButton( "Ajuda" );
+      help.setToolTipText( "Como o espectrograma é calculado e o que procurar no ruído (também no menu Help)" );
+      help.addActionListener( e -> cseis.plugin.csClockHelp.showEspectrograma( this ) );
       rowAct.add( newWin );
       rowAct.add( save );
+      rowAct.add( help );
       rowAct.add( myCursor );
 
       JPanel top = new JPanel();
