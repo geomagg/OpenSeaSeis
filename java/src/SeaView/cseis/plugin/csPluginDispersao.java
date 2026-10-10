@@ -113,6 +113,9 @@ public class csPluginDispersao implements csISeaViewPlugin {
     myParams.side = comboSide.getSelectedIndex();
     myParams.oneSided = summedVsg;
     myParams.lag0 = (int)Math.round( lag0 / dt );
+    // lag 0 on the first sample: there are no negative lags, so the trace is one-sided (e.g. a VSG with
+    // both sides already summed that has no lag0_ms/xc_sides headers and whose title is not the original one)
+    if( !myParams.oneSided && myParams.lag0 == 0 && myParams.side != csDispersionFC.SIDE_CAUSAL ) myParams.oneSided = true;
     if( myParams.lag0 < 0 || myParams.lag0 >= ns ) { error( ctx, "Lag 0 fora do traço" ); return; }
     if( myParams.cmax <= myParams.cmin || myParams.cmin <= 0 ) { error( ctx, "Velocidades: 0 < mín < máx" ); return; }
     if( myParams.fmax <= myParams.fmin ) { error( ctx, "fmax deve ser > fmin" ); return; }

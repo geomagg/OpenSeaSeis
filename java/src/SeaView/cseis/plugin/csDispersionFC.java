@@ -100,7 +100,10 @@ public final class csDispersionFC {
     else if( p.side == SIDE_ACAUSAL ) n = p.lag0 + 1;
     else n = Math.min( ns - p.lag0, p.lag0 + 1 );
     if( p.tmax > 0 ) n = Math.min( n, (int)Math.round( p.tmax / dt ) + 1 );
-    if( n < 4 ) throw new IllegalArgumentException( "Poucas amostras depois do lag 0 (" + n + "): confira o tempo do lag 0" );
+    if( n < 4 ) throw new IllegalArgumentException( String.format( java.util.Locale.US,
+        "Só %d amostra(s) utilizável(is) com o lag 0 em %.4g s (amostra %d de %d) e o lado \"%s\".%n"
+        + "Se o VSG já tem os lados somados, use lag 0 = 0. Se é de dois lados, o lag 0 fica no meio do traço (ex.: %.4g s).",
+        n, p.lag0 * dt, p.lag0, ns, SIDES[p.side], ( ns - 1 ) / 2 * dt ) );
     int nfft = 1;
     while( nfft < 2 * n ) nfft *= 2;
     double df = 1.0 / ( nfft * dt );
