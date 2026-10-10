@@ -174,7 +174,9 @@ public final class csAssimetria {
       JButton csv = new JButton( "Exportar CSV..." );
       csv.addActionListener( e -> saveCsv( traceNumbers ) );
       JPanel bar = new JPanel( new FlowLayout( FlowLayout.LEFT, 8, 2 ) );
-      bar.add( csv ); bar.add( new JLabel( "A > 0: energia indo da fonte virtual para o traço;  A < 0: do traço para a fonte virtual  |" ) ); bar.add( myCursor );
+      JButton help = new JButton( "Ajuda" );
+      help.addActionListener( e -> csClockHelp.showInterferometria( this ) );
+      bar.add( help ); bar.add( csv ); bar.add( new JLabel( "A > 0: energia indo da fonte virtual para o traço;  A < 0: do traço para a fonte virtual  |" ) ); bar.add( myCursor );
       JPanel top = new JPanel( new BorderLayout() );
       top.add( info, BorderLayout.CENTER ); top.add( bar, BorderLayout.SOUTH );
       Plot plot = new Plot();

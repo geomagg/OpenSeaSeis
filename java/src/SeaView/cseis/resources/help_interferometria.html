@@ -1,0 +1,103 @@
+<html>
+<head><title>Interferometria - ajuda</title></head>
+<body style="font-family: sans-serif; font-size: 11pt; margin: 10px">
+
+<h2>Interferometria: virtual shot gather (VSG) por correlação de ruído</h2>
+
+<p>Menu <b>Plugins &gt; Interferometria (virtual shot gather)...</b>. O mesmo cálculo existe
+no fluxo SeaSeis, módulo <tt>$INTERFEROMETRIA</tt>, para registros longos (14 h ou mais) que não
+cabem no painel.</p>
+
+<p><b>Entrada:</b> o <b>ruído bruto</b>, com <b>um traço por receptor</b> (registro contínuo) e todos
+os traços começando no mesmo instante. Para ter o cabeçalho <tt>offset</tt> no VSG (necessário para
+a imagem f-c), o painel precisa de <tt>rec_x</tt> e <tt>rec_y</tt>; no <tt>npy2cseis.py</tt>, use
+<tt>--xy header_offset.txt</tt>.</p>
+
+<h3>1. A ideia</h3>
+<p>Se o ruído chega de todas as direções (campo difuso), a correlação entre o receptor de referência
+A e outro receptor B, empilhada em muitas janelas, converge para a <b>resposta de B a uma fonte em
+A</b>: a função de Green G(&tau;), mais a mesma resposta invertida no tempo:</p>
+<p style="margin-left: 30px"><b>C<sub>AB</sub>(&tau;) &rarr; G<sub>AB</sub>(&tau;) + G<sub>AB</sub>(-&tau;)</b></p>
+<ul>
+<li><b>&tau; &gt; 0 (lado causal):</b> ruído que passou primeiro por A e depois por B. A onda "sai" da fonte virtual.</li>
+<li><b>&tau; &lt; 0 (lado acausal):</b> ruído que passou primeiro por B e depois por A.</li>
+</ul>
+<p>Juntando as correlações de todos os receptores com a mesma referência, sai um <b>tiro virtual</b>
+(VSG): um sismograma como se houvesse uma fonte no receptor de referência.</p>
+<p>Em cada janela o cálculo é: <tt>C(&tau;) = IFFT( conj(R) &middot; X )</tt>, com R = referência e
+X = traço, somado em todas as janelas.</p>
+
+<h3>2. Pré-processamento (em cada traço e em cada janela)</h3>
+<ol>
+<li>Remove a média e aplica um taper nas pontas.</li>
+<li><b>Banda</b> fmin-fmax: máscara com bordas em cosseno.</li>
+<li><b>Normalização temporal</b>, que reduz o peso de eventos fortes (terremotos, navios próximos, transientes):
+  <ul>
+  <li><i>one-bit</i>: só o sinal (+1/-1);</li>
+  <li><i>média absoluta móvel</i>: divide pela média de |x| numa janela móvel. Use ~metade do maior período de interesse; 30 s funcionou na linha 1281.</li>
+  </ul></li>
+<li><b>Branqueamento espectral</b>: divide o espectro pela amplitude suavizada, dentro da banda. Todas
+as frequências passam a ter o mesmo peso.</li>
+</ol>
+<p><b>Atenção:</b> branqueamento sem banda (0 até Nyquist) dá o mesmo peso ao ruído de alta frequência, que
+não é coerente entre receptores, e o VSG fica fraco. Escolha a banda da onda que interessa (por exemplo,
+0,05-2,5 Hz para Scholte e modos da água na linha 1281).</p>
+
+<h3>3. Parâmetros do diálogo</h3>
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><td><b>Fonte virtual: cabeçalho = valor</b></td><td>Traço de referência (ex.: <tt>rcv = 1</tt>).</td></tr>
+<tr><td><b>Parear pelo cabeçalho</b></td><td>Cada traço é correlacionado com a referência que tem o mesmo valor deste cabeçalho (ex.: <tt>chan</tt>: componente com componente).</td></tr>
+<tr><td><b>Normalização temporal, janela</b></td><td>Veja a seção 2.</td></tr>
+<tr><td><b>Banda, branqueamento</b></td><td>Veja a seção 2.</td></tr>
+<tr><td><b>Lag máximo [s]</b></td><td>Até onde a correlação é guardada. Precisa cobrir a distância máxima dividida pela velocidade mais lenta, mais a duração do pulso (ex.: 11 km / 450 m/s &asymp; 25 s; use 30-40 s).</td></tr>
+<tr><td><b>Janelas p/ empilhar [s]</b></td><td>Comprimento de cada janela (ex.: 120 s). 0 = o traço inteiro numa janela só. Mais janelas = VSG mais estável.</td></tr>
+<tr><td><b>Sobreposição [%]</b></td><td>Entre janelas consecutivas. Com o taper quase retangular usado aqui, ajuda pouco e aumenta o tempo.</td></tr>
+<tr><td><b>Somar os dois lados</b></td><td>Saída C(&tau;) + C(-&tau;), de 0 ao lag máximo. Válido só se o campo for simétrico (veja a seção 5).</td></tr>
+<tr><td><b>Normalizar cada correlação</b></td><td>Cada traço dividido pelo seu máximo. Facilita a visualização, mas perde a amplitude relativa.</td></tr>
+<tr><td><b>offset = distância à fonte virtual</b></td><td>Cria o cabeçalho <tt>offset</tt> a partir de <tt>rec_x</tt>/<tt>rec_y</tt>. Use <i>Sort by header</i> em offset para ver o VSG ordenado.</td></tr>
+<tr><td><b>Imagem de dispersão f-c do VSG</b></td><td>Abre a imagem velocidade de fase &times; frequência logo após o cálculo (veja a ajuda <i>Dispersão f-c</i>).</td></tr>
+<tr><td><b>Assimetria causal &times; acausal</b></td><td>Calcula A para cada traço (seção 5), grava o cabeçalho <tt>asym</tt> e abre um gráfico.</td></tr>
+</table>
+
+<h3>4. Como ler o VSG</h3>
+<ul>
+<li><b>Dois lados:</b> o lag 0 fica no meio do traço. O título do painel informa em que tempo ("lag 0 em ... ms"). Acima do lag 0 ficam os lags negativos.</li>
+<li><b>Lados somados:</b> o eixo de tempo começa no lag 0.</li>
+<li>Ondas de superfície aparecem como <b>retas inclinadas</b> saindo da fonte virtual, com inclinação 1/velocidade de grupo (linha 1281: Scholte ~470 m/s; modos da água ~1270 m/s).</li>
+<li>Energia em <b>lag 0 em todos os offsets</b> = onda chegando na vertical (ou perpendicular à linha). Na linha 1281 isso acontece na banda 0,8-2 Hz.</li>
+<li>Um traço com o pulso <b>deslocado igualmente nos dois lados</b> (centro de simetria fora do lag 0) indica <b>erro de relógio ou de alinhamento</b> daquele receptor. Use o plugin <i>Clock</i> ou a aba <i>Atraso entre vizinhos</i> da Difusividade.</li>
+<li>Traços zerados: o receptor não tem referência com o mesmo valor de pareamento, ou o trecho é todo zero.</li>
+</ul>
+
+<h3>5. Assimetria causal &times; acausal</h3>
+<p style="margin-left: 30px"><b>A = (E<sub>+</sub> - E<sub>-</sub>) / (E<sub>+</sub> + E<sub>-</sub>)</b></p>
+<p>E<sub>&plusmn;</sub> = energia de C(&plusmn;&tau;) na janela de chegada, entre
+<b>x/c<sub>max</sub> - folga</b> e <b>x/c<sub>min</sub> + folga</b> (x = distância à fonte virtual).
+Sem coordenadas, usa o lado inteiro.</p>
+<ul>
+<li><b>A &asymp; 0:</b> os dois lados com a mesma energia, campo difuso. Somar os lados é válido.</li>
+<li><b>A &gt; 0:</b> energia indo da fonte virtual para o traço; <b>A &lt; 0:</b> do traço para a fonte virtual.</li>
+<li><b>D = A &middot; sinal(s)</b>, com s = posição ao longo da linha: D &gt; 0 = energia andando no sentido de +s. Um D grande com o mesmo sinal em toda a linha = <b>campo direcional</b>: a mensagem informa de que azimute a energia chega. Use só o lado com energia e <b>não some os lados</b>.</li>
+<li>Faixa sombreada no gráfico: |A| &lt; 0,3.</li>
+<li>Escolha c<sub>min</sub> e c<sub>max</sub> da onda que interessa: Scholte da linha 1281 450-1600 m/s; modos da água 1500-3000 m/s. A folga (~um período) cobre a duração do pulso.</li>
+<li>Linha 1281: na banda 0,8-2 Hz (modos da água), D &asymp; +0,5 a +0,6, energia chegando de ~297° (WNW). Na Scholte, quase simétrico.</li>
+</ul>
+<p>A aba <i>Simetria por hora</i> do plugin <b>Difusividade do campo</b> mede a mesma coisa pelo f-k,
+hora a hora.</p>
+
+<h3>6. Dicas e problemas comuns</h3>
+<ul>
+<li><b>VSG fraco ou sem chegadas:</b> confira a banda (seção 2), o número de janelas e se os traços começam no mesmo instante.</li>
+<li><b>Muitas horas de dado:</b> use o módulo SeaSeis <tt>$INTERFEROMETRIA</tt> no fluxo. Com vários arquivos por receptor, defina o ensemble por arquivo (<tt>ENS_DEFINE header fileno</tt>). O <tt>$ALIGN_TIME</tt> alinha os traços no tempo absoluto antes.</li>
+<li><b>Alinhe os tempos antes de reamostrar.</b> Arredondar o início de cada arquivo para a grade de amostragem cria deslocamentos de até uma amostra entre receptores.</li>
+<li>Para a imagem f-c, o VSG precisa do cabeçalho <tt>offset</tt>.</li>
+</ul>
+
+<h3>Referências</h3>
+<ul>
+<li>Bensen, G. D. et al. (2007). Processing seismic ambient noise data to obtain reliable broad-band surface wave dispersion measurements. <i>Geophys. J. Int.</i> 169, 1239-1260.</li>
+<li>Wapenaar, K., Fokkema, J. (2006). Green's function representations for seismic interferometry. <i>Geophysics</i> 71, SI33-SI46.</li>
+<li>Shapiro, N. M., Campillo, M. (2004). Emergence of broadband Rayleigh waves from correlations of the ambient seismic noise. <i>Geophys. Res. Lett.</i> 31, L07614.</li>
+</ul>
+</body>
+</html>

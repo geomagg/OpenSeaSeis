@@ -105,7 +105,9 @@ public class csMenuBar extends JMenuBar {
   
   private JMenuItem menuAbout;
   private JMenuItem menuHelpClock;
-  private JMenuItem menuHelpDifusividade;  
+  private JMenuItem menuHelpDifusividade;
+  private JMenuItem menuHelpInterf;
+  private JMenuItem menuHelpDisp;  
   private JMenuItem menuImage;
   private JMenuItem menuImageAs;
 
@@ -217,6 +219,8 @@ public class csMenuBar extends JMenuBar {
 
     menuAbout   = new JMenuItem("About");
     menuHelpClock = new JMenuItem("Clock dos nodes (OBN)...");
+    menuHelpInterf = new JMenuItem("Interferometria (VSG) e assimetria...");
+    menuHelpDisp = new JMenuItem("Dispersão f-c (phase-shift)...");
     menuHelpDifusividade = new JMenuItem("Difusividade do campo (SPAC, f-k, simetria, atrasos)...");   
 
     menuHighlight    = new JCheckBoxMenuItem("Highlight trace", false);
@@ -335,6 +339,8 @@ public class csMenuBar extends JMenuBar {
     menuSEGY.add(menuSEGYBinHdr);
 
     menuHelp.add(menuHelpClock);
+    menuHelp.add(menuHelpInterf);
+    menuHelp.add(menuHelpDisp);
     menuHelp.add(menuHelpDifusividade);
     menuHelp.addSeparator();
     menuHelp.add(menuAbout);
@@ -723,6 +729,8 @@ public class csMenuBar extends JMenuBar {
     });
 
     menuHelpClock.addActionListener( e -> cseis.plugin.csClockHelp.show( mySeaView ) );
+    menuHelpInterf.addActionListener( e -> cseis.plugin.csClockHelp.showInterferometria( mySeaView ) );
+    menuHelpDisp.addActionListener( e -> cseis.plugin.csClockHelp.showDispersao( mySeaView ) );
     menuHelpDifusividade.addActionListener( e -> cseis.plugin.csClockHelp.showDifusividade( mySeaView ) );
     menuAbout.addActionListener( new ActionListener() {
       @Override

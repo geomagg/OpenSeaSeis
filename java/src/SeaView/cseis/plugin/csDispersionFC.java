@@ -281,7 +281,9 @@ public final class csDispersionFC {
       row1.add( new JLabel( "Cores:" ) ); row1.add( myCmap );
       JButton bPng = new JButton( "Salvar PNG..." ), bCsv = new JButton( "Exportar CSV..." ), bClr = new JButton( "Limpar picks" );
       JPanel row2 = new JPanel( new FlowLayout( FlowLayout.LEFT, 6, 1 ) );
-      row2.add( bPng ); row2.add( bCsv ); row2.add( bClr );
+      JButton bHelp = new JButton( "Ajuda" );
+      bHelp.addActionListener( e -> csClockHelp.showDispersao( this ) );
+      row2.add( bHelp ); row2.add( bPng ); row2.add( bCsv ); row2.add( bClr );
       row2.add( new JLabel( "  Clique esquerdo: pick   direito: apaga pick  |" ) );
       row2.add( myCursor );
       JPanel top = new JPanel();

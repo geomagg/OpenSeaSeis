@@ -96,6 +96,10 @@ public class csPluginDispersao implements csISeaViewPlugin {
     row = addRow( p, row, "Janela no tempo", comboWin, null, null );
     row = addRow( p, row, "   corte: v [m/s]", tVcut, new JLabel( " folga [s]" ), tPad );
     if( summedVsg ) row = addRow( p, row, "", new JLabel( "VSG com os lados já somados: usa o traço a partir do lag 0" ), null, null );
+    javax.swing.JButton btnHelp = new javax.swing.JButton( "Ajuda" );
+    btnHelp.setToolTipText( "Como a imagem f-c é calculada e lida, e o teste de alias (também no menu Help)" );
+    btnHelp.addActionListener( e -> csClockHelp.showDispersao( btnHelp ) );
+    row = addRow( p, row, "", btnHelp, null, null );
     if( JOptionPane.showConfirmDialog( ctx.getParentFrame(), p, "Dispersão f-c - " + ctx.getTitle(), JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE ) != JOptionPane.OK_OPTION ) return;
 
     double lag0;

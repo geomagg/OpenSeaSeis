@@ -1,0 +1,88 @@
+<html>
+<head><title>Dispersão f-c - ajuda</title></head>
+<body style="font-family: sans-serif; font-size: 11pt; margin: 10px">
+
+<h2>Dispersão f-c: velocidade de fase &times; frequência (phase-shift)</h2>
+
+<p>Menu <b>Plugins &gt; Dispersão f-c (painel ativo)...</b>, ou a opção <i>Imagem de dispersão f-c do
+VSG</i> da Interferometria.</p>
+<p><b>Entrada:</b> um <b>VSG</b> (correlações), com o cabeçalho <tt>offset</tt> = distância à fonte
+virtual. Funciona com qualquer gather cujo eixo de tempo comece no instante da fonte (lag 0).
+<b>Não use o ruído bruto:</b> sem a referência de tempo da fonte, a imagem não tem significado.</p>
+
+<h3>1. Como a imagem é calculada (Park et al., 1998)</h3>
+<p>Para cada traço, no offset x:</p>
+<ol>
+<li>Toma o lado escolhido da correlação, do lag 0 até o lag máximo (ou a soma dos dois lados), com taper de 10% no fim.</li>
+<li>FFT: <tt>O(f, x)</tt>.</li>
+<li>Normaliza a amplitude, <b>U(f, x) = O / |O|</b>: só a fase é usada, e os traços distantes (mais fracos) pesam o mesmo que os próximos.</li>
+</ol>
+<p>Para cada frequência f e velocidade de teste c, desfaz o atraso x/c de cada traço e soma:</p>
+<p style="margin-left: 30px"><b>E(f, c) = | &Sigma;<sub>x</sub> U(f, x) &middot; e<sup>i 2&pi; f x / c</sup> | / N</b></p>
+<p>Se existe uma onda com velocidade de fase c(f), todos os termos ficam em fase nessa velocidade e E chega
+perto de 1. Em outras velocidades as fases se espalham e E cai. O pico de cada coluna é a
+<b>curva de dispersão</b>.</p>
+<p><b>Resolução:</b> &Delta;c/c &asymp; &lambda;/L, com L = abertura (offset máximo - mínimo). Picos são
+largos em baixa frequência (&lambda; grande) e estreitos em alta.</p>
+
+<h3>2. Parâmetros do diálogo</h3>
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><td><b>Cabeçalho de distância</b></td><td>Normalmente <tt>offset</tt> (o valor absoluto é usado). Se o painel não tiver <tt>offset</tt>, aparece um aviso em vermelho: refaça o VSG com <tt>rec_x</tt>/<tt>rec_y</tt>.</td></tr>
+<tr><td><b>Lag 0 no tempo [s]</b></td><td>Onde está o lag 0 no eixo vertical. É lido do título do VSG ("lag 0 em ... ms") ou do cabeçalho <tt>lag0_ms</tt> do módulo SeaSeis. Lados somados: 0.</td></tr>
+<tr><td><b>Lado</b></td><td>Causal (lags positivos), acausal (negativos, espelhados) ou soma dos dois. Num campo direcional, use só o lado que tem energia (veja a assimetria na ajuda da Interferometria).</td></tr>
+<tr><td><b>Lag máximo usado [s]</b></td><td>0 = até o fim do traço. Precisa cobrir offset máximo / c mínimo; se não cobrir, a janela de informação avisa em vermelho.</td></tr>
+<tr><td><b>Frequência, velocidade</b></td><td>Faixa da imagem.</td></tr>
+<tr><td><b>Offset mín/máx</b></td><td>Restringe os traços usados. O mínimo &gt; 0 exclui a própria fonte virtual.</td></tr>
+<tr><td><b>Janela no tempo</b></td><td>Teste de alias (seção 4): traço todo, só a parte rápida, só a lenta, ou as duas imagens.</td></tr>
+<tr><td><b>Corte: v, folga</b></td><td>Fronteira entre rápida e lenta: t = x/v + folga, suavizada em &plusmn;0,5 s.</td></tr>
+</table>
+
+<h3>3. A janela da imagem</h3>
+<ul>
+<li><b>Normalizar por frequência:</b> cada coluna dividida pelo seu máximo. Mostra a curva em todas as frequências, mesmo onde há pouca energia; desligado, mostra onde está a energia.</li>
+<li><b>Máximo por frequência:</b> pontos no pico de cada coluna.</li>
+<li><b>Limite de aliasing:</b> a linha <b>c = 2&middot;&Delta;x&middot;f</b> (&Delta;x = espaçamento típico dos offsets). Abaixo dela, a onda anda mais de meio comprimento de onda entre traços vizinhos e a velocidade fica ambígua.</li>
+<li><b>Cursor:</b> mostra f, c, &lambda; e E.</li>
+<li><b>Picks:</b> clique esquerdo marca um ponto, clique direito apaga o mais próximo, e <i>Limpar picks</i> apaga todos.</li>
+<li><b>Exportar CSV...</b> grava os picks e os máximos por frequência (tipo, f, c, E, E máximo), e no arquivo <tt>_matriz.csv</tt> a imagem inteira.</li>
+<li><b>Salvar PNG...</b> grava a imagem.</li>
+</ul>
+
+<h3>4. Alias ou modo superior?</h3>
+<p>Com traços a &Delta;x, uma onda de velocidade c também aparece nas velocidades c' com</p>
+<p style="margin-left: 30px"><b>f / c' = f / c + m / &Delta;x</b> &nbsp;&nbsp; (m = &plusmn;1, &plusmn;2, ...)</p>
+<p>Energia que chega <b>ao mesmo tempo</b> em todos os traços (c = &infin;, por exemplo onda vertical)
+gera aliases em <b>c = &Delta;x&middot;f / m</b>: retas saindo da origem. Uma onda lenta pode gerar
+um ramo falso rápido, parecido com um modo superior.</p>
+<p><b>Teste da janela no tempo (rápida e lenta):</b> ondas rápidas chegam cedo e lentas chegam tarde.</p>
+<ul>
+<li>Um <b>ramo rápido real</b> aparece na imagem da janela <b>rápida</b> (t &lt; x/v + folga).</li>
+<li>Um <b>alias</b> de onda lenta aparece com velocidade alta, mas a energia dele está na janela <b>lenta</b>: some da imagem rápida e aparece na lenta.</li>
+<li>Escolha v entre a velocidade de grupo das ondas rápidas e a das lentas. Linha 1281: modos da água ~1270 m/s e Scholte ~470 m/s, então v = 1200 m/s e folga de 2 s (~a duração do pulso).</li>
+</ul>
+<p><b>Decimar os traços</b> (usar &Delta;x maior) muda as velocidades dos aliases, mas não é um teste
+suficiente sozinho: um alias de &Delta;x = 500 m com m = 1 coincide com o de m = 2 em
+&Delta;x = 1000 m. Use a janela no tempo.</p>
+
+<h3>5. Como ler: linha 1281</h3>
+<ul>
+<li><b>Scholte fundamental:</b> de ~1600 m/s em 0,16 Hz até ~480 m/s em 0,44 Hz (0,24 Hz ~1100; 0,28 ~830; 0,32 ~710; 0,36 ~610; 0,40 ~550 m/s). Esta é a curva para a inversão de Vs.</li>
+<li><b>Ramos acima de 1500 m/s:</b> modos acústicos guiados/vazados da lâmina d'água. A velocidade de fase cai de ~Vp do fundo (~2000 m/s) até perto de Vw (1500 m/s), e há frequências de corte f<sub>n</sub> = (n - &frac12;)&middot;Vw / (2h&radic;(1 - Vw&sup2;/Vp&sup2;)). Com h &asymp; 2040 m: 0,28, 0,83, 1,39 e 1,95 Hz.</li>
+<li>Energia em lag 0 (vertical) e os seus aliases c = &Delta;x&middot;f/m aparecem como retas pela origem; confira com o teste da janela.</li>
+<li>A <b>imagem SPAC</b> do plugin Difusividade do campo dá uma curva independente da Scholte entre ~0,1 e 0,32 Hz, para comparar.</li>
+</ul>
+
+<h3>6. Problemas comuns</h3>
+<ul>
+<li><b>Imagem toda amarela/uniforme, ou "todos os traços têm a mesma distância":</b> o cabeçalho de distância está errado (por exemplo <tt>time_samp1</tt>) ou o VSG não tem <tt>offset</tt>. Refaça o VSG a partir de dados com <tt>rec_x</tt>/<tt>rec_y</tt>.</li>
+<li><b>"Só N amostras utilizáveis":</b> o lag 0 está no fim do traço para o lado pedido. Confira o lag 0 e o lado; num VSG com os lados somados, o lag 0 é a primeira amostra.</li>
+<li><b>Curva só em parte das frequências:</b> limite da banda da Interferometria, do aliasing (linha) ou do lag máximo (aviso em vermelho).</li>
+</ul>
+
+<h3>Referências</h3>
+<ul>
+<li>Park, C. B., Miller, R. D., Xia, J. (1998). Imaging dispersion curves of surface waves on multi-channel record. <i>SEG Expanded Abstracts</i>, 1377-1380.</li>
+<li>Park, C. B., Miller, R. D., Xia, J. (1999). Multichannel analysis of surface waves. <i>Geophysics</i> 64, 800-808.</li>
+</ul>
+</body>
+</html>

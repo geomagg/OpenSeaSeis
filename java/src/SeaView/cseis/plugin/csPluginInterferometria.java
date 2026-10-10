@@ -151,6 +151,10 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     asRow.add( new JLabel( "c máx [m/s]" ) ); asRow.add( textAsCmax );
     asRow.add( new JLabel( "folga [s]" ) ); asRow.add( textAsPad );
     row = addRow( p, row, "", asRow, null, null );
+    javax.swing.JButton btnHelp = new javax.swing.JButton( "Ajuda" );
+    btnHelp.setToolTipText( "Como funciona a interferometria, os parâmetros e a assimetria (também no menu Help)" );
+    btnHelp.addActionListener( e -> csClockHelp.showInterferometria( btnHelp ) );
+    row = addRow( p, row, "", btnHelp, null, null );
 
     int option = JOptionPane.showConfirmDialog( ctx.getParentFrame(), p, "Interferometria (VSG) - " + ctx.getTitle(),
                                                 JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE );
