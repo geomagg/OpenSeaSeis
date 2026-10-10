@@ -49,6 +49,16 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 public final class csDispersionFC {
   public static final int SIDE_CAUSAL = 0, SIDE_ACAUSAL = 1, SIDE_SUM = 2;
   public static final String[] SIDES = { "lags positivos (causal)", "lags negativos (acausal)", "soma dos dois lados" };
+  public static final int WIN_ALL = 0, WIN_FAST = 1, WIN_SLOW = 2;
+  public static final String[] WINDOWS = { "traço todo", "rápida: t < x/v + folga", "lenta: t > x/v + folga", "rápida e lenta (duas imagens)" };
+
+  /** Weight of the time window at lag t [s] for offset x [m] (smooth tanh boundary of half-width p.edge) */
+  static double windowWeight( Params p, double t, double x ) {
+    if( p.timeWindow == WIN_ALL ) return 1.0;
+    double z = ( t - ( x / p.vcut + p.pad ) ) / Math.max( 1.0e-3, p.edge );
+    double slow = 0.5 + 0.5 * Math.tanh( z );
+    return ( p.timeWindow == WIN_SLOW ) ? slow : 1.0 - slow;
+  }
 
   /** Parameters (s, Hz, m, m/s) */
   public static final class Params {
@@ -60,6 +70,8 @@ public final class csDispersionFC {
     public double cmin = 150, cmax = 2500;
     public int    nc = 300;
     public double dmin = 0, dmax = 1.0e30;
+    public int    timeWindow = WIN_ALL;  // WIN_ALL, WIN_FAST (t < x/vcut + pad) or WIN_SLOW (t > x/vcut + pad)
+    public double vcut = 1200, pad = 2.0, edge = 0.5;   // [m/s], [s], half-width of the smooth boundary [s]
   }
 
   /** Result */
@@ -127,7 +139,7 @@ public final class csDispersionFC {
         if( p.oneSided || p.side == SIDE_CAUSAL ) v = s[p.lag0 + j];
         else if( p.side == SIDE_ACAUSAL ) v = s[p.lag0 - j];
         else v = s[p.lag0 + j] + s[p.lag0 - j];
-        re[j] = v * taper[j];
+        re[j] = v * taper[j] * windowWeight( p, j * dt, x );
         if( v != 0.0 ) any = true;
       }
       if( !any ) continue;                        // dead trace (e.g. no reference)

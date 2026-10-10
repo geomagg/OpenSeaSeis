@@ -23,6 +23,7 @@ import javax.swing.JTextField;
  */
 public class csPluginDispersao implements csISeaViewPlugin {
   private final csDispersionFC.Params myParams = new csDispersionFC.Params();
+  private int myWinChoice = 0;
   private String myOffHdr = "offset";
 
   @Override
@@ -65,6 +66,12 @@ public class csPluginDispersao implements csISeaViewPlugin {
     JComboBox<String> comboSide = new JComboBox<String>( csDispersionFC.SIDES );
     comboSide.setSelectedIndex( myParams.side );
     JTextField tTmax = new JTextField( csDispersionFC.fmt( myParams.tmax ), 6 );
+    JComboBox<String> comboWin = new JComboBox<String>( csDispersionFC.WINDOWS );
+    comboWin.setSelectedIndex( myWinChoice );
+    JTextField tVcut = new JTextField( csDispersionFC.fmt( myParams.vcut ), 6 ), tPad = new JTextField( csDispersionFC.fmt( myParams.pad ), 4 );
+    comboWin.setToolTipText( "Teste de alias: um ramo real rápido aparece na janela rápida; um alias de onda lenta aparece com velocidade alta mas a energia está na janela lenta" );
+    tVcut.setToolTipText( "Velocidade de corte [m/s]: entre a velocidade de grupo das ondas rápidas e a das lentas (linha 1281: modos da água ~1270, Scholte ~470 -> 1200)" );
+    tPad.setToolTipText( "Folga [s] para a duração do pulso; a fronteira é suavizada em +-0,5 s" );
     JTextField tFmin = new JTextField( csDispersionFC.fmt( myParams.fmin ), 6 ), tFmax = new JTextField( csDispersionFC.fmt( myParams.fmax ), 6 );
     JTextField tCmin = new JTextField( csDispersionFC.fmt( myParams.cmin ), 6 ), tCmax = new JTextField( csDispersionFC.fmt( myParams.cmax ), 6 );
     JTextField tDmin = new JTextField( csDispersionFC.fmt( myParams.dmin ), 6 );
@@ -82,6 +89,8 @@ public class csPluginDispersao implements csISeaViewPlugin {
     row = addRow( p, row, "Frequência [Hz]  mín", tFmin, new JLabel( " máx" ), tFmax );
     row = addRow( p, row, "Velocidade [m/s]  mín", tCmin, new JLabel( " máx" ), tCmax );
     row = addRow( p, row, "Offset [m]  mín", tDmin, new JLabel( " máx" ), tDmax );
+    row = addRow( p, row, "Janela no tempo", comboWin, null, null );
+    row = addRow( p, row, "   corte: v [m/s]", tVcut, new JLabel( " folga [s]" ), tPad );
     if( summedVsg ) row = addRow( p, row, "", new JLabel( "VSG com os lados já somados: usa o traço a partir do lag 0" ), null, null );
     if( JOptionPane.showConfirmDialog( ctx.getParentFrame(), p, "Dispersão f-c - " + ctx.getTitle(), JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE ) != JOptionPane.OK_OPTION ) return;
 
@@ -89,6 +98,8 @@ public class csPluginDispersao implements csISeaViewPlugin {
     try {
       lag0 = num( tLag0 );
       myParams.tmax = num( tTmax );
+      myParams.vcut = num( tVcut );
+      myParams.pad  = num( tPad );
       myParams.fmin = num( tFmin ); myParams.fmax = num( tFmax );
       myParams.cmin = num( tCmin ); myParams.cmax = num( tCmax );
       myParams.dmin = num( tDmin );
@@ -114,11 +125,33 @@ public class csPluginDispersao implements csISeaViewPlugin {
       tr[i] = buf.samples( i );
       offs[i] = buf.headerValues( i )[ih].doubleValue();
     }
-    show( ctx, tr, offs, dt, myParams, ctx.getTitle(), myOffHdr );
+    myWinChoice = comboWin.getSelectedIndex();
+    if( myWinChoice != 0 && myParams.vcut <= 0 ) { error( ctx, "A velocidade de corte deve ser > 0" ); return; }
+    if( myWinChoice == 3 ) {
+      for( int w : new int[]{ csDispersionFC.WIN_FAST, csDispersionFC.WIN_SLOW } ) {
+        csDispersionFC.Params q = copyParams( myParams );
+        q.timeWindow = w;
+        show( ctx, tr, offs, dt, q, ctx.getTitle(), myOffHdr );
+      }
+    }
+    else {
+      myParams.timeWindow = myWinChoice;
+      show( ctx, tr, offs, dt, myParams, ctx.getTitle(), myOffHdr );
+    }
+  }
+
+  static csDispersionFC.Params copyParams( csDispersionFC.Params a ) {
+    csDispersionFC.Params b = new csDispersionFC.Params();
+    b.lag0 = a.lag0; b.side = a.side; b.oneSided = a.oneSided; b.tmax = a.tmax; b.fmin = a.fmin; b.fmax = a.fmax;
+    b.cmin = a.cmin; b.cmax = a.cmax; b.nc = a.nc; b.dmin = a.dmin; b.dmax = a.dmax;
+    b.timeWindow = a.timeWindow; b.vcut = a.vcut; b.pad = a.pad; b.edge = a.edge;
+    return b;
   }
 
   /** Computes and opens the f-c window (also used by Interferometria) */
   static void show( csIPluginContext ctx, float[][] traces, double[] offs, double dt, csDispersionFC.Params prm, String title, String offName ) {
+    if( prm.timeWindow == csDispersionFC.WIN_FAST ) title = title + String.format( Locale.US, " [janela rápida: t < x/%.0f + %.3g s]", prm.vcut, prm.pad );
+    else if( prm.timeWindow == csDispersionFC.WIN_SLOW ) title = title + String.format( Locale.US, " [janela lenta: t > x/%.0f + %.3g s]", prm.vcut, prm.pad );
     csDispersionFC.Image img;
     try {
       img = csDispersionFC.compute( traces, offs, dt, prm );
@@ -140,6 +173,7 @@ public class csPluginDispersao implements csISeaViewPlugin {
     }
     csDispersionFC.Frame f = new csDispersionFC.Frame( img, title, info.toString() );
     f.setLocationRelativeTo( ctx.getParentFrame() );
+    if( prm.timeWindow == csDispersionFC.WIN_SLOW ) f.setLocation( f.getX() + 60, f.getY() + 60 );
     f.setVisible( true );
   }
 
