@@ -467,7 +467,7 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     return r;
   }
 
-  private static double[] bandMask( int nfft, double df, double fmin, double fmax ) {
+  static double[] bandMask( int nfft, double df, double fmin, double fmax ) {
     double[] m = new double[nfft];
     double w = Math.max( 2*df, 0.1 * ( fmax - fmin ) );   // cosine transition width
     for( int f = 0; f <= nfft/2; f++ ) {
@@ -482,7 +482,7 @@ public class csPluginInterferometria implements csISeaViewPlugin {
     }
     return m;
   }
-  private static double[] tukey( int n, double frac ) {
+  static double[] tukey( int n, double frac ) {
     double[] w = new double[n];
     int ne = Math.max( 1, (int)( frac * n ) );
     for( int i = 0; i < n; i++ ) {

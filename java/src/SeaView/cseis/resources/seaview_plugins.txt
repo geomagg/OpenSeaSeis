@@ -10,3 +10,4 @@ cseis.plugins.csSpkSortPlugin
 cseis.plugins.csSpkClockPlugin
 cseis.plugins.csSpkInterferometriaPlugin
 cseis.plugins.csSpkDispersaoPlugin
+cseis.plugins.csSpkDifusividadePlugin
