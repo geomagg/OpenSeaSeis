@@ -1,6 +1,7 @@
 # Filtro TSR (Two-Sided Recursive): inverso estavel de uma wavelet conhecida,
 # fase minima ou nao.  TSR = B(1/z) / [B0(z) B0(1/z)]
 # A wavelet deve estar amostrada no mesmo intervalo dos tracos.
+# RM = Roland Marschall
 $INPUT_SEGY
  filename      entrada.sgy
 $RM_TSR

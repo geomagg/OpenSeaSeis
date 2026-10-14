@@ -3,6 +3,7 @@
 /*
  * Module RM_TSR: Two-Sided Recursive (TSR) inverse filter of a known wavelet.
  * Author: M. A. Gallotti Guimaraes (COPPE-UFRJ), 2026.
+ * Module prefix RM = Roland Marschall.
  *
  * Convention: z = unit delay, B(z) = sum_k b_k z^k (wavelet b_0..b_n, sampled at the trace interval).
  *
@@ -385,9 +386,10 @@ void exec_mod_rm_tsr_(
 // Parameter definition (help: seaseis -m rm_tsr)
 //
 void params_mod_rm_tsr_( csParamDef* pdef ) {
-  pdef->setModule( "RM_TSR", "Two-Sided Recursive (TSR) inverse filter of a known wavelet",
+  pdef->setModule( "RM_TSR", "Two-Sided Recursive (TSR) inverse filter of a known wavelet (RM = Roland Marschall)",
                    "Stable inverse 1/B of a wavelet that need not be minimum phase: TSR = B(1/z) / [B0(z) B0(1/z)]" );
 
+  pdef->addDoc("The prefix RM in the module name stands for Roland Marschall.");
   pdef->addDoc("Convention: z = unit delay, B(z) = sum b_k z^k. The wavelet must be sampled at the trace sample interval.");
   pdef->addDoc("1/B(z) is causal and stable only if B is minimum phase (all roots outside the unit circle). Multiplying numerator and denominator by B(1/z) gives");
   pdef->addDoc("TSR = B(1/z) / R(z), R = B(z)B(1/z) = B0(z)B0(1/z): a correlation with b (carries the phase) followed by a causal and an anticausal recursion with the minimum-phase factor B0.");
