@@ -1,0 +1,15 @@
+# Filtro TSR (Two-Sided Recursive): inverso estavel de uma wavelet conhecida,
+# fase minima ou nao.  TSR = B(1/z) / [B0(z) B0(1/z)]
+# A wavelet deve estar amostrada no mesmo intervalo dos tracos.
+$INPUT_SEGY
+ filename      entrada.sgy
+$RM_TSR
+ filename      wavelet.txt      # amostras b0 b1 ... bn (ou use: wavelet 1 1.5 -1)
+ zero_time     60               # tempo [ms] da amostra da wavelet que marca o evento (pico da Ricker)
+ mode          tsr              # tsr | whiten (1/R, fase zero) | minphase (1/B0, decon spike classica)
+ white_noise   0.1              # [%] somado a r0
+ filter_length 476              # [ms] comprimento do inverso de Wiener 1/B0
+ method        recursive        # recursive | fir
+$OUTPUT_SEGY
+ filename      saida_tsr.sgy
+ data_format   ieee
