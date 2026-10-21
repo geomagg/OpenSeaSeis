@@ -106,6 +106,7 @@
   SPK_SHOTBIN         1.0
   SPK_XSCALE          1.0
   SPK_T2GAIN          1.0
+  SPK_RESAMPLE        1.0
   SCALING             1.0
   SELECT              1.0
   SELECT_TIME         1.0
