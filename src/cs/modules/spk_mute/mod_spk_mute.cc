@@ -42,7 +42,7 @@ using namespace std;
  *  - XTM sample indices are limited to the trace length.
  *  - Headers GY, GZ/GZEL and MUTS were read but not used: not used here either.
  * Record and trace numbers come from trace headers (default spk_rec, spk_trc as
- * written by INPUT_SEISPAK). For single-trace records (HMT = 1) SEISPAK uses the
+ * written by INPUT_SEISPAK); they are needed only for IX0 > 0, DT0 or XTM. For single-trace records (HMT = 1) SEISPAK uses the
  * record number as trace number: set hdr_trc accordingly.
  */
 
@@ -255,14 +255,18 @@ void init_mod_spk_mute_( csParamManager* param, csInitPhaseEnv* env, csLogWriter
   if( v->lrm > 0 ) v->ntt = (int)( (double)v->lrm/sr + 1.1 );
   if( v->t0 < 0. ) { v->t0 = -v->t0; v->it0sign = -1; } else v->it0sign = 1;
 
-  // headers
+  // headers: record/trace numbers are needed only for IX0 > 0, DT0 and XTM
   string name;
+  bool needRecTrc = ( v->ix0 > 0 || v->dt0 != 0.0 || param->getNumLines("xtm") > 0 );   // SEASEIS
+  v->idRec = -1; v->idTrc = -1;
   name = "spk_rec"; if( param->exists("hdr_rec") ) param->getString("hdr_rec", &name);
-  if( !hdef->headerExists(name) ) writer->error("Trace header '%s' (record number) not found: set hdr_rec", name.c_str());
-  v->idRec = hdef->headerIndex( name );
+  if( hdef->headerExists(name) ) v->idRec = hdef->headerIndex( name );
+  else if( needRecTrc || param->exists("hdr_rec") )
+    writer->error("Trace header '%s' (record number, needed for IX0 > 0, DT0 or XTM) not found: set hdr_rec", name.c_str());
   name = "spk_trc"; if( param->exists("hdr_trc") ) param->getString("hdr_trc", &name);
-  if( !hdef->headerExists(name) ) writer->error("Trace header '%s' (trace number) not found: set hdr_trc", name.c_str());
-  v->idTrc = hdef->headerIndex( name );
+  if( hdef->headerExists(name) ) v->idTrc = hdef->headerIndex( name );
+  else if( needRecTrc || param->exists("hdr_trc") )
+    writer->error("Trace header '%s' (trace number, needed for IX0 > 0 or XTM) not found: set hdr_trc", name.c_str());
   v->idOff = -1;
   if( v->ix0 == 0 ) {
     if( param->exists("hdr_offset") ) param->getString("hdr_offset", &name);
@@ -345,8 +349,8 @@ void exec_mod_spk_mute_( csTraceGather* traceGather, int* port, int* numTrcToKee
   float* s = trace->getTraceSamples();
   int nt = v->nt, ntt = v->ntt;
   double sr = v->sr;
-  int k = th->intValue( v->idRec );
-  int i = th->intValue( v->idTrc );
+  int k = ( v->idRec >= 0 ) ? th->intValue( v->idRec ) : 1;
+  int i = ( v->idTrc >= 0 ) ? th->intValue( v->idTrc ) : 1;
 
   //--- 1. hyperbolic mute
   double rang;
