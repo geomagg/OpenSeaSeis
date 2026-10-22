@@ -135,3 +135,4 @@
   TRC_PRINT           1.0
   TRC_SPLIT           1.0
   SPK_XVSPMIG2        1.0
+  SPK_XVSPMIG1        1.0
