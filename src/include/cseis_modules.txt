@@ -113,6 +113,7 @@
   SPK_MFILT2          1.0
   SPK_ADDFILE         1.0
   SPK_WBMUTE          1.0
+  SPK_AMPMAX          1.0
   SCALING             1.0
   SELECT              1.0
   SELECT_TIME         1.0
