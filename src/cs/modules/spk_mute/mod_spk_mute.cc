@@ -16,7 +16,9 @@ using namespace std;
  * CSEIS - Seabed Seismic Processing System
  * Module: SPK_MUTE
  *
- * SEISPAK process MUTE (emute.f / mute.f, with XTINTERP, JOEHINT, SPLYN, XSHIFT1, CLP):
+ * SEISPAK process MUTE (emute.f / mute.f, with XTINTERP, JOEHINT, SPLYN, XSHIFT1, CLP),
+ * with the additions of XMUTE (xmute.f): per-trace T0 from a header (MUTS) and the
+ * flattening mode VEL < 0.
  *  1. Hyperbolic mute: t = sqrt( (T0+(k-1)*DT0)**2 + (RANG*1000/VEL)**2 ) [ms]
  *     RANG = offset header (IX0 = 0) or sqrt( ((i-IX0)*DX)**2 + ((k-IY0)*DY)**2 )
  *     (k = record, i = trace in record). T0 >= 0: top mute (zero above t, 10-sample
@@ -26,6 +28,13 @@ using namespace std;
  *  3. XTM mutes: per record block, each pair of (trace, time) curves defines a
  *     region (below the first curve and above the second) that is zeroed.
  *     Curve interpolation: 0 linear, -1 cubic spline, -2 smoothed linear.
+ *  XMUTE additions:
+ *  - hdr_muts: T0 of each trace from this header (SEISPAK MUTS) instead of T0+(k-1)*DT0.
+ *    The sign of the parameter T0 still selects top or bottom mute.
+ *  - VEL < 0 (flatten): no mute and no static shift; each trace is shifted by
+ *    SHIFT - sqrt( T0F**2 + (1000*RANG/VEL)**2 ) [ms] (FFT phase shift), so that the
+ *    hyperbola lands at time SHIFT. T0F = MUTS - 100 (hdr_muts given), or
+ *    1000*GZ/|VEL| - 100 (T0 = 0, GZ = node depth from hdr_depth), or T0.
  *  4. CLIP (subroutine CLP): CLIP < 0 zeroes a +-100 ms window around every
  *     sample with |amp| > |CLIP|; CLIP > 0 clips the amplitudes to +-CLIP.
  *
@@ -40,7 +49,11 @@ using namespace std;
  *  - When LRM made the output longer than the input, the extra samples kept old
  *    buffer contents; here they are zero.
  *  - XTM sample indices are limited to the trace length.
- *  - Headers GY, GZ/GZEL and MUTS were read but not used: not used here either.
+ *  - mute.f: headers GY, GZ/GZEL and MUTS were read but not used. XMUTE uses MUTS and
+ *    GZ/GZEL: here only when hdr_muts is given or VEL < 0.
+ *  - xmute.f, VEL < 0 with T0 given and no MUTS: used S(0) (undefined); here T0.
+ *  - xmute.f, VEL < 0: samples shifted past the trace end wrapped around (FFT); here
+ *    they are zeroed, as in the fractional shift.
  * Record and trace numbers come from trace headers (default spk_rec, spk_trc as
  * written by INPUT_SEISPAK); they are needed only for IX0 > 0, DT0 or XTM. For single-trace records (HMT = 1) SEISPAK uses the
  * record number as trace number: set hdr_trc accordingly.
@@ -61,7 +74,8 @@ namespace mod_spk_mute {
     int    it0sign;                     // +1 top mute, -1 bottom mute
     int    nt, ntt;
     float  sr;
-    int    idRec, idTrc, idOff;
+    int    idRec, idTrc, idOff, idMuts, idDepth;
+    bool   flatten;
     int    ishft; double ashft;
     bool   doShift, fracShift;
     int    nfft;
@@ -275,6 +289,25 @@ void init_mod_spk_mute_( csParamManager* param, csInitPhaseEnv* env, csLogWriter
     v->idOff = hdef->headerIndex( name );
   }
 
+  // XMUTE: MUTS header and flattening (VEL < 0)
+  v->idMuts = -1; v->idDepth = -1;
+  v->flatten = ( v->vel < 0.0 );
+  if( param->exists("hdr_muts") ) {
+    param->getString("hdr_muts", &name);
+    if( !hdef->headerExists(name) ) writer->error("Trace header '%s' (MUTS, T0 of each trace) not found", name.c_str());
+    v->idMuts = hdef->headerIndex( name );
+  }
+  if( v->flatten && v->idMuts < 0 && v->t0 == 0.0 ) {
+    if( param->exists("hdr_depth") ) param->getString("hdr_depth", &name);
+    else name = hdef->headerExists("spk_gz") ? "spk_gz" : ( hdef->headerExists("spk_gzel") ? "spk_gzel" : "rec_wdep" );
+    if( !hdef->headerExists(name) ) writer->error("Depth header '%s' (GZ, for VEL < 0 without T0 or MUTS) not found: set hdr_depth", name.c_str());
+    v->idDepth = hdef->headerIndex( name );
+  }
+  {
+    int log2 = (int)( log( (double)v->nt - 1. )/log( 2. ) ) + 1;
+    v->nfft = 1 << log2;
+  }
+
   // shift
   v->ashft = v->shift/sr;
   v->ishft = (int)v->ashft;                                  // truncation, as Fortran
@@ -282,9 +315,7 @@ void init_mod_spk_mute_( csParamManager* param, csInitPhaseEnv* env, csLogWriter
   if( fabs(rshft) < .001 ) rshft = 0.;
   v->doShift   = ( v->ishft != 0 || rshft != 0. );            // SEASEIS: shift < 1 sample applied
   v->fracShift = ( rshft != 0. );
-  if( v->fracShift ) {
-    int log2 = (int)( log( (double)v->nt - 1. )/log( 2. ) ) + 1;
-    v->nfft = 1 << log2;
+  if( v->fracShift && !v->flatten ) {
     v->phase.assign( v->nfft, 1.0 );
     for( int k = 0; k < v->nfft; k++ ) {
       int kk = ( k <= v->nfft/2 ) ? k : k - v->nfft;          // signed frequency index
@@ -330,6 +361,12 @@ void init_mod_spk_mute_( csParamManager* param, csInitPhaseEnv* env, csLogWriter
   v->lwin2 = (int)( 100./sr + 1 );
   v->work.assign( std::max( v->nt, v->ntt ) + 8, 0.0f );
 
+  if( v->idMuts >= 0 ) writer->line("  T0 of each trace from header '%s' (MUTS)", hdef->headerName(v->idMuts).c_str());
+  if( v->flatten ) {
+    if( v->idMuts >= 0 ) writer->line("  VEL < 0: flatten, T0F = MUTS - 100 ms, hyperbola moved to SHIFT = %g ms (no mute)", v->shift);
+    else if( v->t0 != 0.0 ) writer->line("  VEL < 0: flatten, T0F = T0 = %g ms, hyperbola moved to SHIFT = %g ms (no mute)", v->t0, v->shift);
+    else writer->line("  VEL < 0: flatten, T0F = 1000*%s/|VEL| - 100 ms, hyperbola moved to SHIFT = %g ms (no mute)", hdef->headerName(v->idDepth).c_str(), v->shift);
+  }
   writer->line("  T0 %g ms (%s)  DT0 %g  VEL %g  IX0 %d IY0 %d DX %g DY %g", v->t0, v->it0sign > 0 ? "top mute" : "bottom mute",
                v->dt0, v->vel, v->ix0, v->iy0, v->dx, v->dy);
   writer->line("  SHIFT %g ms (%.3f samples%s)  LRM %d ms -> %d output samples", v->shift, v->ashft,
@@ -352,11 +389,40 @@ void exec_mod_spk_mute_( csTraceGather* traceGather, int* port, int* numTrcToKee
   int k = ( v->idRec >= 0 ) ? th->intValue( v->idRec ) : 1;
   int i = ( v->idTrc >= 0 ) ? th->intValue( v->idTrc ) : 1;
 
-  //--- 1. hyperbolic mute
   double rang;
   if( v->ix0 == 0 ) rang = th->doubleValue( v->idOff );
   else rang = sqrt( pow( (i - v->ix0)*v->dx, 2 ) + pow( (k - v->iy0)*v->dy, 2 ) );
-  double x = pow( v->t0 + (k-1)*v->dt0, 2 ) + pow( rang*1000./v->vel, 2 );
+  float* w = &v->work[0];
+  for( int j = 0; j < (int)v->work.size(); j++ ) w[j] = 0.0f;
+
+  //--- XMUTE, VEL < 0: flatten the hyperbola to time SHIFT (no mute, no static shift)
+  if( v->flatten ) {
+    double t0f;
+    if( v->idMuts >= 0 ) t0f = th->doubleValue( v->idMuts ) - 100.;
+    else if( v->t0 != 0.0 ) t0f = v->t0;                                // SEASEIS (S(0) in xmute.f)
+    else t0f = 1000.*fabs( th->doubleValue( v->idDepth ) )/fabs( v->vel ) - 100.;
+    double ash = ( v->shift - sqrt( t0f*t0f + pow( 1000.*rang/v->vel, 2 ) ) )/sr;
+    int n = v->nfft;
+    std::vector<cplx> y( n, 0.0 );
+    for( int j = 0; j < nt; j++ ) y[j] = s[j];
+    fft2( y, -1 );
+    for( int kk = 0; kk < n; kk++ ) {
+      int kf = ( kk <= n/2 ) ? kk : kk - n;
+      double om = 2.0*M_PI*kf/n;
+      if( kk == n/2 ) y[kk] *= cos( om*ash );
+      else y[kk] *= std::polar( 1.0, -om*ash );
+    }
+    fft2( y, +1 );
+    for( int j = 0; j < std::min( nt, ntt ); j++ ) {
+      double src = j - ash;                                            // SEASEIS: no wrap-around
+      w[j] = ( src < -0.5 || src > nt - 0.5 ) ? 0.0f : (float)( y[j].real()/n );
+    }
+    memcpy( s, w, ntt*sizeof(float) );
+  }
+  else {
+  //--- 1. hyperbolic mute
+  double t0k = ( v->idMuts >= 0 ) ? th->doubleValue( v->idMuts ) : v->t0 + (k-1)*v->dt0;   // XMUTE: MUTS
+  double x = pow( t0k, 2 ) + pow( rang*1000./v->vel, 2 );
   int it = (int)( 1.0 + sqrt(x)/sr );
   it = std::min( it, nt );
   if( it > 1 ) {
@@ -372,8 +438,6 @@ void exec_mod_spk_mute_( csTraceGather* traceGather, int* port, int* numTrcToKee
   }
 
   //--- 2. shift / output length
-  float* w = &v->work[0];
-  for( int j = 0; j < (int)v->work.size(); j++ ) w[j] = 0.0f;
   if( !v->doShift ) {
     for( int j = 0; j < std::min( nt, ntt ); j++ ) w[j] = s[j];       // SEASEIS: zero past NT
   }
@@ -396,6 +460,7 @@ void exec_mod_spk_mute_( csTraceGather* traceGather, int* port, int* numTrcToKee
     else { for( int j = nt + v->ishft; j <= nt; j++ ) if( j >= 1 && j <= ntt ) w[j-1] = 0.0f; }
   }
   memcpy( s, w, ntt*sizeof(float) );
+  }
 
   //--- 3. XTM mutes
   for( size_t b = 0; b < v->blocks.size(); b++ ) {
@@ -439,7 +504,8 @@ void params_mod_spk_mute_( csParamDef* pdef ) {
   pdef->addValue( "0", VALTYPE_NUMBER, "T0 [ms]" );
   pdef->addParam( "dt0", "Record-to-record change in T0 [ms]", NUM_VALUES_FIXED );
   pdef->addValue( "0", VALTYPE_NUMBER, "DT0 [ms]" );
-  pdef->addParam( "vel", "Moveout velocity for the mute [m/s]", NUM_VALUES_FIXED );
+  pdef->addParam( "vel", "Moveout velocity for the mute [m/s]", NUM_VALUES_FIXED,
+                  "VEL < 0 (XMUTE): flatten mode, every trace is shifted so that the hyperbola lands at time SHIFT, no mute" );
   pdef->addValue( "1000000", VALTYPE_NUMBER, "VEL [m/s]" );
   pdef->addParam( "ix0", "Trace number of the T0 location (0: use the offset header)", NUM_VALUES_FIXED );
   pdef->addValue( "0", VALTYPE_NUMBER, "IX0" );
@@ -465,6 +531,12 @@ void params_mod_spk_mute_( csParamDef* pdef ) {
   pdef->addValue( "spk_rec", VALTYPE_STRING, "Header name" );
   pdef->addParam( "hdr_trc", "Trace header with the trace number in the record (i)", NUM_VALUES_FIXED );
   pdef->addValue( "spk_trc", VALTYPE_STRING, "Header name" );
+  pdef->addParam( "hdr_muts", "Trace header with T0 of each trace [ms] (SEISPAK MUTS, XMUTE)", NUM_VALUES_FIXED,
+                  "Replaces T0+(k-1)*DT0 in the mute; with VEL < 0, T0F = MUTS - 100. Default: not used" );
+  pdef->addValue( "", VALTYPE_STRING, "Header name" );
+  pdef->addParam( "hdr_depth", "Trace header with the node depth GZ, for VEL < 0 without T0 or MUTS (XMUTE)", NUM_VALUES_FIXED,
+                  "Default: spk_gz, spk_gzel or rec_wdep" );
+  pdef->addValue( "spk_gz", VALTYPE_STRING, "Header name" );
   pdef->addParam( "hdr_offset", "Trace header with the offset (SEISPAK RANG), used when IX0 = 0", NUM_VALUES_FIXED,
                   "Default: spk_rang if present, otherwise offset" );
   pdef->addValue( "spk_rang", VALTYPE_STRING, "Header name" );
