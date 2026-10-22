@@ -101,6 +101,39 @@ namespace mod_spk_xvspmig2 {
     *hmtOut = ihmt; *hmrOut = ihmr; *ntOut = nt; *smpOut = smp;
     return "";
   }
+  // SEISPAK onl2dvsvels: v(z) of each DPN (sample interval dzv) -> NZ interval velocities at depth
+  // step DZ, preserving the vertical travel time (t(z) integrated with step dzv, linear
+  // interpolation of t at j*DZ (int3), v = DZ/dt). Pairs (v_j, j*DZ), as written to DVSVELS.
+  void onl2dvsvels( std::vector<float> const& vin, int ntr, int nzv, float dzv, int nz, float dz, std::vector<float>* vout ) {
+    int nnz = (int)lrint( (nz+1)*(double)dz/dzv ) + 2;
+    std::vector<double> y( nnz+2 ), f( nz+2 );
+    double r = (double)dz/dzv;
+    int m = nz+1;
+    int m1 = std::min( m, 1 + (int)( (nnz-1)/r ) );
+    vout->assign( (size_t)ntr*nz, 0.0f );
+    for( int ix = 0; ix < ntr; ix++ ) {
+      float const* v = &vin[(size_t)ix*nzv];
+      double t = 0.0;
+      for( int j = 1; j <= nnz+1; j++ ) {
+        int iv = std::min( nzv, j );
+        y[j] = t;
+        t += dzv/v[iv-1];
+      }
+      for( int j = 1; j <= m1; j++ ) {
+        double x = 1.0 + r*(j-1);
+        int ii = (int)x;
+        double b = x - ii, a = 1.0 - b;
+        f[j] = a*y[ii] + b*y[ii+1];
+      }
+      for( int j = m1+1; j <= m; j++ ) f[j] = 0.0;
+      double t1 = 0.0;
+      for( int j = 1; j <= nz; j++ ) {
+        double t2 = f[j+1];
+        (*vout)[(size_t)ix*nz + j-1] = (float)( dz/(t2-t1) );
+        t1 = t2;
+      }
+    }
+  }
   double hval( csTrace* trc, int id ) {
     return ( id < 0 ) ? 0.0 : trc->getTraceHeader()->doubleValue( id );
   }
@@ -265,6 +298,19 @@ void init_mod_spk_xvspmig2_( csParamManager* param, csInitPhaseEnv* env, csLogWr
     if( !err.empty() ) {
       std::string msg = "Velocity file '" + fname + "': " + err;
       writer->error( "%s", msg.c_str() );
+    }
+    if( param->exists("vel_dz") ) {                // onl2dvsvels NX NY NZ DZ
+      float dz = 0.0f; int nz = 0;
+      param->getFloat( "vel_dz", &dz );
+      if( dz <= 0.0f ) writer->error("vel_dz must be > 0");
+      if( dzv <= 0.0f ) writer->error("Velocity file '%s': sample interval %g in its header is not a depth step", fname.c_str(), dzv);
+      if( param->exists("vel_nz") ) param->getInt( "vel_nz", &nz );
+      else nz = (int)( ntv*(double)dzv/dz ) - 1;
+      if( nz < 1 ) writer->error("vel_nz must be >= 1");
+      std::vector<float> vv;
+      onl2dvsvels( vdat, hmt*hmr, ntv, dzv, nz, dz, &vv );
+      writer->line("  onl2dvsvels: %d samples at %g -> %d samples at %g (vertical time preserved)", ntv, dzv, nz, dz);
+      vdat.swap( vv ); ntv = nz; dzv = dz;
     }
     int nxv = hmt*hmr, np = ntv, nw = 2*np+3;
     vars->afit.assign( 3 + (size_t)nxv*nw + 1000, 0.0f );
@@ -507,6 +553,12 @@ void params_mod_spk_xvspmig2_( csParamDef* pdef ) {
   pdef->addValue( "", VALTYPE_NUMBER, "y" );
   pdef->addParam( "vel_file", "SEISPAK file with interval velocity v(z), one trace per DPN (ONL)", NUM_VALUES_FIXED );
   pdef->addValue( "", VALTYPE_STRING, "File name" );
+  pdef->addParam( "vel_dz", "Resample the velocity file to this depth step, as SEISPAK onl2dvsvels (DZ)", NUM_VALUES_FIXED,
+                  "Interval velocities recomputed preserving the vertical travel time. Default: use the file as it is" );
+  pdef->addValue( "", VALTYPE_NUMBER, "DZ" );
+  pdef->addParam( "vel_nz", "Number of depth samples after resampling (onl2dvsvels NZ)", NUM_VALUES_FIXED,
+                  "Only with vel_dz. Default: as many as the file covers" );
+  pdef->addValue( "", VALTYPE_NUMBER, "NZ" );
   pdef->addParam( "output", "What to output", NUM_VALUES_FIXED );
   pdef->addValue( "stack", VALTYPE_OPTION );
   pdef->addOption( "stack", "Stacked depth section of all records (OFFLINE2); headers trcno, cmp, cmp_x" );
