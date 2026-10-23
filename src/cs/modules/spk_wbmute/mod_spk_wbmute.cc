@@ -92,6 +92,16 @@ namespace mod_spk_wbmute {
     *hmtOut = ihmt; *hmrOut = ihmr; *ntOut = nt; *smpOut = smp;
     return "";
   }
+
+  // SEASEIS: decimate the velocity grid (extraction to the migration grid): DPN 1, 1+SX, 1+2SX ...; lines 1, 1+SY ...
+  void decimateVel( std::vector<float>* vd, int* hmt, int* hmr, int ntv, int sx, int sy ) {
+    if( sx <= 1 && sy <= 1 ) return;
+    int nx2 = (*hmt - 1)/sx + 1, ny2 = (*hmr - 1)/sy + 1;
+    std::vector<float> out( (size_t)nx2*ny2*ntv );
+    for( int iy = 0; iy < ny2; iy++ ) for( int ix = 0; ix < nx2; ix++ )
+      memcpy( &out[((size_t)iy*nx2 + ix)*ntv], &(*vd)[((size_t)(iy*sy)*(*hmt) + ix*sx)*ntv], ntv*sizeof(float) );
+    vd->swap( out ); *hmt = nx2; *hmr = ny2;
+  }
 }
 using namespace mod_spk_wbmute;
 
@@ -112,6 +122,17 @@ void init_mod_spk_wbmute_( csParamManager* param, csInitPhaseEnv* env, csLogWrit
   if( v->ramp <= 0.0f ) writer->error("RAMP must be > 0");
   std::string err = readSeispak( fname, &v->hmt, &v->hmr, &v->ntv, &v->dzv, &v->vel );
   if( !err.empty() ) { std::string msg = "Velocity file '" + fname + "': " + err; writer->error( "%s", msg.c_str() ); }
+  {
+    int sx = 1, sy = 1;
+    if( param->exists("vel_step_x") ) param->getInt( "vel_step_x", &sx );
+    if( param->exists("vel_step_y") ) param->getInt( "vel_step_y", &sy );
+    if( sx < 1 || sy < 1 ) writer->error("vel_step_x / vel_step_y must be >= 1");
+    if( sx > 1 || sy > 1 ) {
+      int h0 = v->hmt, r0 = v->hmr;
+      decimateVel( &v->vel, &v->hmt, &v->hmr, v->ntv, sx, sy );
+      writer->line("  Velocity grid decimated: every %d DPN and %d line(s): %d x %d -> %d x %d", sx, sy, h0, r0, v->hmt, v->hmr);
+    }
+  }
 
   int nv = v->hmt*v->hmr, nowb = 0;
   v->wbz.assign( nv, 0.0f );
@@ -163,6 +184,11 @@ void params_mod_spk_wbmute_( csParamDef* pdef ) {
                    "zero above WBZ - 1/RAMP and linear ramp to WBZ." );
   pdef->addParam( "vel_file", "SEISPAK ONL file with v(z), one trace per DPN (as ONLVELS)", NUM_VALUES_FIXED );
   pdef->addValue( "", VALTYPE_STRING, "File name" );
+  pdef->addParam( "vel_step_x", "Velocity grid: DPN per output trace (extraction: output trace i uses DPN (i-1)*STEP+1)", NUM_VALUES_FIXED,
+                  "Ex.: model at 25 m, migration grid at 50 m, same origin and azimuth: 2" );
+  pdef->addValue( "1", VALTYPE_NUMBER, "Step" );
+  pdef->addParam( "vel_step_y", "Velocity grid: lines per output line", NUM_VALUES_FIXED );
+  pdef->addValue( "1", VALTYPE_NUMBER, "Step" );
   pdef->addParam( "wv", "Water velocity: water bottom = first sample with v > WV+10", NUM_VALUES_FIXED );
   pdef->addValue( "1490", VALTYPE_NUMBER, "WV" );
   pdef->addParam( "ramp", "Ramp slope per depth unit (mute length above WBZ = 1/RAMP)", NUM_VALUES_FIXED );
