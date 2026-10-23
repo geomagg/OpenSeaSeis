@@ -10,25 +10,21 @@
 
 ## SEISPAK modules (SPK_*)
 
-The `SPK_*` modules port programs of **SEISPAK**, the Texaco processing system, into SeaSeis:
-binning, gain, deconvolution, filtering, mutes, PZ summation, and 2D and 3D prestack depth
-migration of ocean-bottom node data (SPK_XVSPMIG1, SPK_XVSPMIG2, SPK_3DBCPMIG). The
-numerical routines are the original Fortran, kept unchanged wherever possible; only the
-SEISPAK file I/O was replaced by SeaSeis traces and memory. The changes are marked
-`SEASEIS` in the code. Each module was checked against the original program or against
-synthetic data.
+The `SPK_*` modules bring into SeaSeis the ocean-bottom node (OBN) processing and imaging codes
+written in 2014 at Geonunes: binning, gain, deconvolution, filtering, mutes, PZ summation, and
+2D and 3D prestack depth migration of node data (SPK_XVSPMIG1, SPK_XVSPMIG2, SPK_3DBCPMIG). The
+Fortran numerics are kept unchanged wherever possible; only the file I/O was replaced by SeaSeis
+traces and memory. The changes are marked `SEASEIS` in the code. Each module was checked
+against the original program or against synthetic data.
 
 ### In memory of Dwight Sukup
 
-Many of these routines carry the name of **Dwight Sukup** (Texaco E&P Research). The 3D
-travel-time routine used by SPK_3DBCPMIG still opens with *"From an original by Dwight Sukup
-of Texaco E&P Research"*. In 2014 Dwight rewrote these routines for ocean-bottom node (OBN)
-data, together with **Patricia Crawford** and **Marcos Gallotti**, both of the former
-Geonunes. The node migrations here (SPK_XVSPMIG1, SPK_XVSPMIG2, SPK_3DBCPMIG) come from
-that work. The modules keep the SEISPAK name (the `SPK_` prefix) as a tribute to the Texaco
-group that created it. Decades after SEISPAK began, the code can still be followed line by line, and it
-still produces correct images. This fork is dedicated to his memory and to everyone who
-worked with him on SEISPAK.
+In 2014 a project funded by FINEP in Brazil, for the development of OBN imaging, brought
+together **Dwight Sukup** (Texaco E&P Research), **Patricia Crawford** and **Marcos Gallotti**,
+both of the former Geonunes. All the codes were rewritten for OBN data. Only the name SEISPAK,
+the Texaco processing system, was kept (the `SPK_` prefix), as a tribute to Dwight himself and
+to those who worked with him. Years later, Dwight's code can still be followed line by line,
+and it still produces correct images. This fork is dedicated to his memory.
 
 # OpenSeaSeis
 
