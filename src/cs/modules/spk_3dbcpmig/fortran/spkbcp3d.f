@@ -366,7 +366,17 @@ c     (real) sao o mesmo vetor, como a EQUIVALENCE (s(1),y(1))
       REAL S(*),DATA(*),VELS(NXOUT*NYOUT,*),ZMUT(*),HZ(*)
       REAL CUBE(NXOUT*NYOUT,*)
       INTEGER INFO(*)
+c     SEASEIS: OpenMP no laco de frequencias. Cada thread tem seu
+c     proprio scratch a,b,c (antes y(ia),y(ib),y(ic)) em WTH.
+      COMPLEX, ALLOCATABLE :: WTH(:)
+!$    INTEGER omp_get_thread_num, omp_get_max_threads
       nxy=nx*ny
+      nthr=1
+!$    nthr=omp_get_max_threads()
+      nsc=4*nxy+17*max(nx,ny)+64
+      allocate(wth(nsc*nthr))
+      ith=0
+      nvels=nint(apx-10.)
       nwdst=nx*ny*itzr
       dz=itzr*ddz
       delw=2.*3.1415927/nt1
@@ -484,18 +494,22 @@ c   ***
       s(isy+j-1)=xx
       nh1=2*dt*nt2*hz(k)+1
       end do
+c     SEASEIS: "goto 991" (sair quando i > nh1-nl) virou um IF,
+c     para o laco poder ser paralelo; frequencias sao independentes
+!$omp parallel do default(shared) private(i,w,i1,ith,ja)
+!$omp& schedule(dynamic,1)
       do 100 i=1,nws
+      if(i.le.nh1-nl .and. apx .ge. 11.)then
       w=(nl+i-2)*delw
       i1=(i-1)*nxy
-      if(i.gt.nh1-nl)goto 991
+!$    ith=omp_get_thread_num()
+      ja=1+ith*nsc
 c   ***   velocity term s(isy)= (v*dt/dy)**2
-      if(apx .ge. 11.)then
-      nvels=nint(apx-10.)
-      call xxmvphs2d(y(iy+i1),y(ia),y(ib),y(ic),nx,ny,dx,dy,
-     *      dt,w,s(isy),s(ivy),sgn,nvels)
+      call oxxmvphs2d(y(iy+i1),wth(ja),wth(ja+nxy),wth(ja+2*nxy),
+     *      nx,ny,dx,dy,dt,w,s(isy),s(ivy),sgn,nvels)
       end if
 100   continue
- 991  continue
+!$omp end parallel do
       call vshift1(y(iy),y(ia),y(ib),y(ic),s(isy),delw,nl,nh1,nxy,sgn)
 c   ***   reset velocity coefficients for this level
       do j=1,nxy
@@ -506,25 +520,27 @@ c   ***   reset velocity coefficients for this level
 c   ***   if kk0 .gt. kstart then procede with downward continuation
       if(kk0 .gt. kstart)then
       nh1=2*dt*nt2*hz(k)+1
+!$omp parallel do default(shared) private(i,w,i1,ith,ja)
+!$omp& schedule(dynamic,1)
       do 200 i=1,nws
+      if(i.le.nh1-nl .and. apx .ge. 11.)then
       w=(nl+i-2)*delw
       i1=(i-1)*nxy
-      if(i.gt.nh1-nl)goto 992
-      if(apx .ge. 11.)then
-      nvels=nint(apx-10.)
-      call xxmvphs2d(y(iy+i1),y(ia),y(ib),y(ic),nx,ny,dx,dy,
-     *      dt,w,s(isy),s(ivy),sgn,nvels)
+!$    ith=omp_get_thread_num()
+      ja=1+ith*nsc
+      call oxxmvphs2d(y(iy+i1),wth(ja),wth(ja+nxy),wth(ja+2*nxy),
+     *      nx,ny,dx,dy,dt,w,s(isy),s(ivy),sgn,nvels)
 c   ***   apply attenuating absorbing boundary
-      call bndry(y(iy+i1),nx,ny,20,20)
+      call obndry(y(iy+i1),nx,ny,20,20)
       end if
 200   continue
- 992  continue
+!$omp end parallel do
 c   ***   apply thin lens term (refraction correction)
-      call sgivshift1(y(iy),s(isy),delw,nl,nh1,nxy,sgn)
+      call osgivshift1(y(iy),s(isy),delw,nl,nh1,nxy,sgn)
       end if
 c   ***   image data for direct reflected energies
       if(itype.eq.1 .and.kk0.gt.kstartu)then
-      call sgimrg2r(data,y(iz),y(iy),s(isy),s(itu1),s(itu2),nl,nh1,
+      call osgimrg2r(data,y(iz),y(iy),s(isy),s(itu1),s(itu2),nl,nh1,
      *  nt1,nxy,itzr)
 c   ***   mute data at mute angle
        zz=(k-1)*dz
@@ -538,7 +554,7 @@ c     SEASEIS: soma no cubo de saida (antes: arquivo 'indata')
       endif
 c   ***   image data for mirror reflected energies
        if(itype.eq.2 .and. kk0.gt.kstart)then
-      call sgimrg2r(data,y(iz),y(iy),s(isy),s(itd1),s(itd2),nl,nh1,
+      call osgimrg2r(data,y(iz),y(iy),s(isy),s(itd1),s(itd2),nl,nh1,
      *  nt1,nxy,itzr)
 c   ***   mute data at mute angle
        zz=(k-1)*dz
@@ -612,5 +628,14 @@ c     vint nao e 'yes'
 101   continue
 c   ***   spl1 resamples data trace in x at sample points defined by e
       call spl1(x,1.,u,e,s,nnz,nt,1.)
+      return
+      end
+      SUBROUTINE SPKBTHR(N)
+c     SEASEIS: numero de threads OpenMP (N <= 0: OMP_NUM_THREADS ou
+c     todos os nucleos); devolve em N o numero usado
+!$    INTEGER omp_get_max_threads
+!$    if(n .gt. 0)call omp_set_num_threads(n)
+      n=1
+!$    n=omp_get_max_threads()
       return
       end

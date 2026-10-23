@@ -40,6 +40,7 @@ extern "C" {
   void spkbr_( float* d, int* ntd, int* ntr, float* sxh, float* syh, int* igx, int* igy, int* igz, int* ip, float* rp,
                float* vels, float* vrms, float* zmut, float* hz, float* cube, float* wk, float* data, float* tr1, float* yt,
                float* xndx, float* xndx1, float* rr, int* info );
+  void spkbthr_( int* n );
   void spkbt_( float* x, float* u, float* e, float* s, float* vdat, int* ntv, int* nxv, int* nyv, float* dzv, int* nt,
                float* sr, int* nnz, float* ddz, float* dpnx, float* dpny, float* v );
 }
@@ -224,7 +225,14 @@ void init_mod_spk_3dbcpmig_( csParamManager* param, csInitPhaseEnv* env, csLogWr
     }
   }
   writer->line("  Velocity (ONLVELS): %s  %d DPN x %d lines, %d samples, depth step %g", fname.c_str(), v->hmtv, v->hmrv, v->ntv, v->dzv);
-  if( v->hmtv < v->nxout || v->hmrv < v->nyout ) writer->warning("Velocity grid (%d x %d) smaller than the output grid (%d x %d): last DPN/line repeated", v->hmtv, v->hmrv, v->nxout, v->nyout);
+  if( v->hmtv < v->nxout ) writer->warning("Velocity grid has %d DPN, fewer than the %d output traces (x): the last DPN is repeated", v->hmtv, v->nxout);
+  if( v->hmrv < v->nyout ) writer->warning("Velocity grid has %d lines, fewer than the %d output lines (y): the last line is repeated", v->hmrv, v->nyout);
+  {
+    int nthr = 0;
+    if( param->exists("threads") ) param->getInt( "threads", &nthr );
+    spkbthr_( &nthr );
+    writer->line("  OpenMP threads (frequency loop): %d", nthr);
+  }
 
   writer->line("  ITYPE %d (%s)  APX %g  ITZR %d  FRQ1/FRQ2 %g %g Hz  MUTE %g deg  ELV0 %g  OTY %g", v->itype,
                v->itype == 1 ? "up-going" : "down-going, mirror", v->apx, v->itzr, v->frq1, v->frq2, v->amute, v->gam1, v->beta);
@@ -463,6 +471,9 @@ void params_mod_spk_3dbcpmig_( csParamDef* pdef ) {
   pdef->addParam( "indata", "Binary file with the image being summed (as the SEISPAK 'indata' link): read if it exists, written at the end", NUM_VALUES_FIXED,
                   "Lets several runs (nodes) add into the same cube" );
   pdef->addValue( "", VALTYPE_STRING, "File name" );
+  pdef->addParam( "threads", "Number of CPU threads (OpenMP, frequencies migrated in parallel)", NUM_VALUES_FIXED,
+                  "Default 0: OMP_NUM_THREADS if set, else all cores. Same result for any number of threads" );
+  pdef->addValue( "0", VALTYPE_NUMBER, "Threads" );
   pdef->addParam( "output", "Output cube", NUM_VALUES_FIXED );
   pdef->addValue( "depth", VALTYPE_OPTION );
   pdef->addOption( "depth", "Depth cube (OFFLINE2): NNZ samples at DDZ" );

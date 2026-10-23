@@ -6,12 +6,18 @@ OBJS      = $(OBJDIR)/mod_$(MODULE_NAME).o
 F77DIR    = $(MODDIR)/fortran
 # rotinas comuns (fftl2d, dwnn, fftc, vshift1, sgivshift1, sgimrg2r, bndry...) do SPK_DVSMIG3D
 F77LIB    = $(SRCDIR)/cs/modules/spk_dvsmig3d/fortran
-OBJS_F77  = $(OBJDIR)/spkbcp3d.o $(OBJDIR)/spkbcp3d_sub.o $(OBJDIR)/spkbcp3d_dvslib.o $(OBJDIR)/spkbcp3d_dvssub.o $(OBJDIR)/spkbcp3d_cfft.o
+OBJS_F77  = $(OBJDIR)/spkbcp3d.o $(OBJDIR)/spkbcp3d_sub.o $(OBJDIR)/spkbcp3d_dvslib.o $(OBJDIR)/spkbcp3d_dvssub.o $(OBJDIR)/spkbcp3d_cfft.o $(OBJDIR)/spkbcp3d_omp.o
 LIB_v1.0  = libmod_$(MODULE_NAME).so.1.0
 
 # -std=legacy: codigo Fortran 77 antigo (mesmo vetor passado como real e complexo)
 # -fno-automatic em bcp3d_sub.f: variaveis locais estaticas, como no g77
-F77_LEGACY = $(F77_FLAGS) -std=legacy -fPIC
+# -O2: o make_seaseis.sh compila o Fortran sem otimizacao (~2.6x mais lento)
+# -fno-tree-vectorize: com -fopenmp o gfortran vetoriza sin/cos (libmvec), que
+#  arredonda diferente; sem isso o resultado e identico ao da versao serial
+F77_LEGACY = $(F77_FLAGS) -O2 -fno-tree-vectorize -std=legacy -fPIC
+# OpenMP (spkbcp3d.f + bcp3d_omp.f, sem -fno-automatic): laco de frequencias,
+# imagem (sgimrg2r) e lente fina (sgivshift1) em paralelo
+F77_OMP    = $(F77_LEGACY) -fopenmp
 
 INCS =  -I"$(SRCDIR)/cs/geolib"  -I"$(SRCDIR)/cs/system" -I"$(MODDIR)"
 
@@ -29,19 +35,22 @@ $(OBJDIR)/mod_$(MODULE_NAME).o: $(MODULE)
 	$(CPP) -c $(ALL_FLAGS) $(MODULE) -o $(OBJDIR)/mod_$(MODULE_NAME).o
 
 $(LIBDIR)/$(LIB_v1.0): $(OBJS) $(OBJS_F77)
-	$(CPP) -fPIC -shared -Wl,-$(SONAME),$(LIB_v1.0) -Wl,-rpath,$(LIBDIR) -o $(LIBDIR)/$(LIB_v1.0) $(OBJS) $(OBJS_F77) -L$(LIBDIR) -lc -lgeolib -lcseis_system -lgfortran
+	$(CPP) -fPIC -shared -Wl,-$(SONAME),$(LIB_v1.0) -Wl,-rpath,$(LIBDIR) -o $(LIBDIR)/$(LIB_v1.0) $(OBJS) $(OBJS_F77) -L$(LIBDIR) -lc -lgeolib -lcseis_system -lgfortran -fopenmp
 
-$(OBJDIR)/spkbcp3d.o: $(F77DIR)/spkbcp3d.f
-	$(F77) -c $(F77_LEGACY) $(F77DIR)/spkbcp3d.f -o $(OBJDIR)/spkbcp3d.o
+$(OBJDIR)/spkbcp3d.o: $(F77DIR)/spkbcp3d.f $(MODDIR)/Makefile_f77
+	$(F77) -c $(F77_OMP) $(F77DIR)/spkbcp3d.f -o $(OBJDIR)/spkbcp3d.o
 
-$(OBJDIR)/spkbcp3d_sub.o: $(F77DIR)/bcp3d_sub.f
+$(OBJDIR)/spkbcp3d_sub.o: $(F77DIR)/bcp3d_sub.f $(MODDIR)/Makefile_f77
 	$(F77) -c $(F77_LEGACY) -fno-automatic $(F77DIR)/bcp3d_sub.f -o $(OBJDIR)/spkbcp3d_sub.o
 
-$(OBJDIR)/spkbcp3d_dvslib.o: $(F77LIB)/dvslib_mig3d.f
+$(OBJDIR)/spkbcp3d_dvslib.o: $(F77LIB)/dvslib_mig3d.f $(MODDIR)/Makefile_f77
 	$(F77) -c $(F77_LEGACY) $(F77LIB)/dvslib_mig3d.f -o $(OBJDIR)/spkbcp3d_dvslib.o
 
-$(OBJDIR)/spkbcp3d_dvssub.o: $(F77LIB)/dvsmig3d_sub.f
+$(OBJDIR)/spkbcp3d_dvssub.o: $(F77LIB)/dvsmig3d_sub.f $(MODDIR)/Makefile_f77
 	$(F77) -c $(F77_LEGACY) $(F77LIB)/dvsmig3d_sub.f -o $(OBJDIR)/spkbcp3d_dvssub.o
 
-$(OBJDIR)/spkbcp3d_cfft.o: $(F77LIB)/cfftpack.f
+$(OBJDIR)/spkbcp3d_cfft.o: $(F77LIB)/cfftpack.f $(MODDIR)/Makefile_f77
 	$(F77) -c $(F77_LEGACY) $(F77LIB)/cfftpack.f -o $(OBJDIR)/spkbcp3d_cfft.o
+
+$(OBJDIR)/spkbcp3d_omp.o: $(F77DIR)/bcp3d_omp.f $(MODDIR)/Makefile_f77
+	$(F77) -c $(F77_OMP) $(F77DIR)/bcp3d_omp.f -o $(OBJDIR)/spkbcp3d_omp.o
