@@ -1,5 +1,5 @@
-/* Copyright (c) Colorado School of Mines, 2013.*/
-/* All rights reserved.                       */
+/* Copyright (c) 2026 M. A. Gallotti Guimaraes (COPPE-UFRJ).      */
+/* Distributed under the OpenSeaSeis license (see LICENSE).       */
 /*
  * Module INTERFEROMETRIA: virtual shot gather (VSG) from ambient noise by cross-correlation with a
  * reference trace (virtual source), stacked over time windows and over the whole input.

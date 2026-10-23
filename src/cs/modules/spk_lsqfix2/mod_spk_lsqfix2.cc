@@ -1,5 +1,5 @@
-/* Copyright (c) Colorado School of Mines, 2013.*/
-/* All rights reserved.                       */
+/* Copyright (c) 2026 M. A. Gallotti Guimaraes (COPPE-UFRJ).      */
+/* Distributed under the OpenSeaSeis license (see LICENSE).       */
 /* Module SPK_LSQFIX2: M. A. Gallotti Guimaraes (COPPE-UFRJ), 2026 */
 
 #include "cseis_includes.h"

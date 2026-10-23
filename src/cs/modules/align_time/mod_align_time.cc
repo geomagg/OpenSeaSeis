@@ -1,5 +1,5 @@
-/* Copyright (c) Colorado School of Mines, 2013.*/
-/* All rights reserved.                       */
+/* Copyright (c) 2026 M. A. Gallotti Guimaraes (COPPE-UFRJ).      */
+/* Distributed under the OpenSeaSeis license (see LICENSE).       */
 /*
  * Module ALIGN_TIME: aligns traces in absolute time (headers time_samp1 + time_samp1_us, or
  * time_year/day/hour/min/sec/msec/usec).

@@ -1,5 +1,5 @@
-/* Copyright (c) Colorado School of Mines, 2013.*/
-/* All rights reserved.                       */
+/* Copyright (c) 2026 M. A. Gallotti Guimaraes (COPPE-UFRJ).      */
+/* Distributed under the OpenSeaSeis license (see LICENSE).       */
 /*
  * Module RMS_MAGG: RMS amplitude in a time window centred on a picked time.
  * Author: M. A. Gallotti Guimaraes (COPPE-UFRJ), 2026.

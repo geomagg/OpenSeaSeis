@@ -1,5 +1,5 @@
-/* Copyright (c) Colorado School of Mines, 2013.*/
-/* All rights reserved.                       */
+/* Copyright (c) 2026 M. A. Gallotti Guimaraes (COPPE-UFRJ).      */
+/* Distributed under the OpenSeaSeis license (see LICENSE).       */
 /*
  * Module INPUT_HDF5: read OBN data stored in HDF5 files.
  * Author: M. A. Gallotti Guimaraes (COPPE-UFRJ), 2026.

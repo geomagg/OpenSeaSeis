@@ -1,5 +1,5 @@
-/* Copyright (c) Colorado School of Mines, 2013.*/
-/* All rights reserved.                       */
+/* Copyright (c) 2026 M. A. Gallotti Guimaraes (COPPE-UFRJ).      */
+/* Distributed under the OpenSeaSeis license (see LICENSE).       */
 /*
  * Module OUTPUT_HDF5: write traces to an HDF5 file in the OBN layout read by INPUT_HDF5.
  * Author: M. A. Gallotti Guimaraes (COPPE-UFRJ), 2026.
