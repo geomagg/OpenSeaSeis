@@ -138,3 +138,4 @@
   TRC_SPLIT           1.0
   SPK_XVSPMIG2        1.0
   SPK_XVSPMIG1        1.0
+  SPK_3DBCPMIG        1.0
