@@ -51,6 +51,7 @@ namespace mod_spk_3dbcpmig {
     float xll, yll, xlr, ylr;
     float sr; int ntIn;
     bool  outTime;
+    bool  nodeOv; double nodeX, nodeY, nodeZ;
     std::string recHeader, hdrSx, hdrSy, hdrGx, hdrGy, hdrGz, indataFile;
     int   hmtv, hmrv, ntv; float dzv;
     std::vector<float> vdat;
@@ -161,6 +162,12 @@ void init_mod_spk_3dbcpmig_( csParamManager* param, csInitPhaseEnv* env, csLogWr
   if( param->exists("hdr_node_y") ) param->getString( "hdr_node_y", &v->hdrGy );
   if( param->exists("hdr_node_z") ) param->getString( "hdr_node_z", &v->hdrGz );
   if( param->exists("indata") ) param->getString( "indata", &v->indataFile );
+  v->nodeOv = param->exists("node_xyz");
+  if( v->nodeOv ) {
+    param->getDouble( "node_xyz", &v->nodeX, 0 );
+    param->getDouble( "node_xyz", &v->nodeY, 1 );
+    param->getDouble( "node_xyz", &v->nodeZ, 2 );
+  }
   if( param->exists("output") ) {
     param->getString( "output", &text );
     if( !text.compare("time") ) v->outTime = true;
@@ -205,6 +212,7 @@ void init_mod_spk_3dbcpmig_( csParamManager* param, csInitPhaseEnv* env, csLogWr
   writer->line("  Records from header '%s' (records %d to %d);  shots '%s' '%s';  node '%s' '%s' depth '%s'", v->recHeader.c_str(),
                v->ifr, v->ilr, v->hdrSx.c_str(), v->hdrSy.c_str(), v->hdrGx.c_str(), v->hdrGy.c_str(), v->hdrGz.c_str());
   if( !v->indataFile.empty() ) writer->line("  Image summed into '%s' (as 'indata')", v->indataFile.c_str());
+  if( v->nodeOv ) writer->line("  Node position from parameter node_xyz (DBASE): %.1f %.1f depth %.1f, for every record", v->nodeX, v->nodeY, v->nodeZ);
 
   v->gather = new csTraceGather( hdef );
   if( !hdef->headerExists(HDR_TRCNO.name) ) hdef->addStandardHeader( HDR_TRCNO.name );
@@ -297,6 +305,7 @@ void exec_mod_spk_3dbcpmig_( csTraceGather* traceGather, int* port, int* numTrcT
     // DBASE (bcdbasefix): GX GY GZEL of the first trace of the record
     csTrace* t1 = v->gather->trace(k0);
     int igx = (int)lrint( hval(t1,idGx) ), igy = (int)lrint( hval(t1,idGy) ), igz = (int)lrint( hval(t1,idGz) );
+    if( v->nodeOv ) { igx = (int)lrint(v->nodeX); igy = (int)lrint(v->nodeY); igz = (int)lrint(v->nodeZ); }   // DBASE given
     int info[10] = {0,0,0,0,0,0,0,0,0,0};
     for( size_t j = 0; j < wk.size(); j++ ) wk[j] = 0.0f;
     spkbr_( &d[0], &ntd, &nr, &sx[0], &sy[0], &igx, &igy, &igz, ip, rp, &vels[0], &vrms[0], &zmut[0], &hz[0], &cube[0],
@@ -420,6 +429,11 @@ void params_mod_spk_3dbcpmig_( csParamDef* pdef ) {
   pdef->addValue( "rec_y", VALTYPE_STRING, "Header name" );
   pdef->addParam( "hdr_node_z", "Node depth (SEISPAK GZEL; absolute value used)", NUM_VALUES_FIXED );
   pdef->addValue( "rec_wdep", VALTYPE_STRING, "Header name" );
+  pdef->addParam( "node_xyz", "Node x y depth for every record, instead of the headers (as editing the DBASE line)", NUM_VALUES_FIXED,
+                  "To reproduce a SEISPAK run whose DBASE had other coordinates" );
+  pdef->addValue( "", VALTYPE_NUMBER, "x" );
+  pdef->addValue( "", VALTYPE_NUMBER, "y" );
+  pdef->addValue( "", VALTYPE_NUMBER, "depth" );
   pdef->addParam( "indata", "Binary file with the image being summed (as the SEISPAK 'indata' link): read if it exists, written at the end", NUM_VALUES_FIXED,
                   "Lets several runs (nodes) add into the same cube" );
   pdef->addValue( "", VALTYPE_STRING, "File name" );
