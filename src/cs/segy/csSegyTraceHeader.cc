@@ -223,7 +223,17 @@ void csSegyTraceHeader::writeHeaderValues( byte_t* buffer, bool doSwapEndian, bo
   int nHeaders = numHeaders();
 
   // Special treatment for headers that need to be scaled:
+  // GEOMAGG: applyCoordinateScalarWriting() reverses the sign of the scalar headers in place. Scalars that
+  // are not refreshed from the input trace (default/mandatory values, set once) then alternated between
+  // -100 and +100 from one trace to the next, so every second trace had its coordinates divided by 100.
+  // Keep the original scalars and restore them after the header has been written.
+  int idScal[3] = { -1, -1, -1 };
+  int valScal[3] = { 0, 0, 0 };
   if( autoScaleHeaders ) {
+    idScal[0] = myHdrMapPtr->getCoordScalarHeaderIndex();
+    idScal[1] = myHdrMapPtr->getElevScalarHeaderIndex();
+    idScal[2] = myHdrMapPtr->getStatScalarHeaderIndex();
+    for( int k = 0; k < 3; k++ ) if( idScal[k] >= 0 ) valScal[k] = myHdrValues[idScal[k]].intValue();
     myHdrMapPtr->applyCoordinateScalarWriting( myHdrValues );
   }
 
@@ -271,6 +281,10 @@ void csSegyTraceHeader::writeHeaderValues( byte_t* buffer, bool doSwapEndian, bo
         double2Byte( myHdrValues[ihdr].doubleValue(), &buffer[byteLoc] );
       }
     }
+  }
+
+  if( autoScaleHeaders ) {
+    for( int k = 0; k < 3; k++ ) if( idScal[k] >= 0 ) myHdrValues[idScal[k]].setIntValue( valScal[k] );
   }
 
   // Special treatment for headers that need to be scaled:
