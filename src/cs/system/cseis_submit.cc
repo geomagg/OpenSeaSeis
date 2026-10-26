@@ -529,6 +529,12 @@ int main( int argc, char** argv ) {
       filenameLog = tmp;
       lengthLog += lengthDir + 1;
     }
+    else if( mpiProcID == 0 ) {
+      // geomagg: log name given with -o (no -d): keep its full length. lengthLog was the
+      // length of the flow file name, so the log name was cut to that length ('-o mig_TRUE.log'
+      // with flow 'MIG.flow' wrote the log to 'mig_TRU').
+      lengthLog = strlen(filenameLog) + 1;
+    }
     if( mpiProcID != 0 ) {
       sprintf( &filenameLog[lengthLog-1], "%04d", mpiProcID );
     }
