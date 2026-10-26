@@ -192,6 +192,17 @@ c						front end of the wavelet
 c						solve toeplitz matrix
 c						using levinson recursion
       CALL TPLTZR(R,Y,F,LNGF-IGAP)
+c     SEASEIS: filtro nao finito (R(1) quase nulo na janela, p.ex. so restos
+c     de interpolacao no fim de um traco curto): a janela fica sem decon.
+c     O original devolvia NaN no traco inteiro.
+      DO 195 I=1,LNGF-IGAP
+         IF(.NOT.(ABS(F(I)).LT.1.0E30))THEN
+            DO 196 J=1,NT
+               X(J)=S(LHDR+J)
+  196       CONTINUE
+            RETURN
+         ENDIF
+  195 CONTINUE
 c						convolve prediction filter
 c						with data
       IF(IPFLG.EQ.1)THEN
