@@ -1,0 +1,12 @@
+$INPUT_SEGY
+ filename  &P&_tau.sgy
+$ENS_DEFINE
+ header  ffid
+$SPK_TAU2VFIX
+ vavg_file  &P&_vavg.sgy
+ vel        1000 3000
+ factor     2
+ tau_dt     8
+$OUTPUT_SEGY
+ filename     &P&_vfix.sgy
+ data_format  ieee

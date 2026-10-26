@@ -1,0 +1,19 @@
+$SPK_XDVSSYN2D
+ nx 512
+ nz 512
+ dx 25
+ ddz 10
+ nt 2000
+ sr 2
+ nx0 &X&
+ nz0 100
+ idp 2
+ apx 0
+ kutta 2
+ raa 0
+ direct_wave remove
+ vel_file VTRUE10
+$HDR_MATH
+ equation  ffid  &N&
+$OUTPUT
+ filename  node&N&.cseis

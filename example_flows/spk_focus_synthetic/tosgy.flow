@@ -1,0 +1,5 @@
+$INPUT
+ filename &I&
+$OUTPUT_SEGY
+ filename &O&
+ data_format ieee

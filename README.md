@@ -17,6 +17,21 @@ Fortran numerics are kept unchanged wherever possible; only the file I/O was rep
 traces and memory. The changes are marked `SEASEIS` in the code. Each module was checked
 against the original program or against synthetic data.
 
+### Depth focusing velocity analysis
+
+Velocity analysis by depth focusing (D. Sukup): the migration keeps a window of time lags
+around the imaging condition (t = 0) at each depth level, stacked over the nodes. With the
+right velocity the energy focuses at tau = 0; with a wrong one it focuses at a shift DT,
+and the corrected average velocity is V_new(T) = V_old(T) (1 - DT / (f T)).
+
+1. Migration with `focus_*` parameters (SPK_XVSPMIG1, SPK_XVSPMIG2, SPK_3DBCPMIG): image plus
+   `PREFIX_tau.sgy` (tau panels), `PREFIX_vcoh.sgy`, `PREFIX_vavg.sgy` and `PREFIX_vtps.txt` (2D).
+2. SPK_TAU2VFIX: tau panels to velocity coherence panels; SPK_VTRACK draws the migration velocity on them.
+3. Picks (T, Vavg) -> V_int = (V2 T2 - V1 T1) / (T2 - T1) -> new model, and migrate again.
+
+A complete example on a 2D synthetic, with one script, is in `example_flows/spk_focus_synthetic`;
+the step-by-step description (in Portuguese) is `doc/SPK_depth_focusing_velocity_analysis_pt.pdf`.
+
 ### In memory of Dwight Sukup
 
 In 2014 a project funded by FINEP in Brazil, for the development of OBN imaging, brought

@@ -1,0 +1,43 @@
+# Migracao + analise de focalizacao (sintetico, 17 nos)
+$INPUT
+ filename  node1.cseis
+ filename  node2.cseis
+ filename  node3.cseis
+ filename  node4.cseis
+ filename  node5.cseis
+ filename  node6.cseis
+ filename  node7.cseis
+ filename  node8.cseis
+ filename  node9.cseis
+ filename  node10.cseis
+ filename  node11.cseis
+ filename  node12.cseis
+ filename  node13.cseis
+ filename  node14.cseis
+ filename  node15.cseis
+ filename  node16.cseis
+ filename  node17.cseis
+$SPK_XVSPMIG1
+ apx            13
+ dx             25
+ ddz            5
+ nnz            801
+ itzr           5
+ frq1           4
+ frq2           45
+ mute_angle     45
+ record_header  ffid
+ hdr_trace_x    rec_x
+ hdr_source_x   sou_x
+ hdr_source_z   sou_z
+ vel_file       &V&
+ vel_dz         25
+ vel_nz         200
+ output         stack
+ focus_x        180 340 20
+ focus_window   1000
+ focus_vel      1000 3000
+ focus_out      &P&
+$OUTPUT_SEGY
+ filename     &P&_mig.sgy
+ data_format  ieee
