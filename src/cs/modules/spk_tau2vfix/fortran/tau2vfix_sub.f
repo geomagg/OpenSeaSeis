@@ -1,7 +1,7 @@
 c   ***   SEISPAK tau2vfix: rotinas originais xtau2v, factm, factp
 c   ***   (fonte tau2vfix.f; programa principal em mod_spk_tau2vfix.cc).
 c   ***   Mudancas marcadas SEASEIS.
-      subroutine xtau2v(tdata,vdata,vel,vmin,vmax,nt,dt,jnt)
+      subroutine xtau2v(tdata,vdata,vel,vmin,vmax,nt,dt,jnt,dtr)
 c  ***  tdata     real   input (nt x jnt) tau deviation data
 c  ***  vdata     real   output (nt x jnt) estimated velocity
 c  ***  vel       real   input rms velocity sampled at (j-1)*dt
@@ -10,6 +10,9 @@ c  ***  vmax      real   maximum velocity to map
 c  ***  nt        int    number of time samples
 c  ***  dt        real   time sample interval in seconds
 c  ***  jnt       int    number of tau deviation data traces
+c  ***  dtr       real   SEASEIS: tau spacing of the traces in seconds
+c  ***                   (the original used dt; OFFLINE4 is decimated by
+c  ***                   iisr = 8/sr, so its traces are iisr*dt apart)
       real vdata(nt,jnt), tdata(nt,jnt),vel(nt)
 c   ***   map tau-deviation data (dtau) to corrected rms velocity (vc)
 c   ***   Corrected rms velocity is estimated from tau deviation using:
@@ -35,7 +38,7 @@ c   ***   dtau=0 at tau-deviaton trace  rjnt = jnt/2+1
        endif
        dtau=factor*tau*(1.-(vc/vm))
 c   ***  set rj to trace # for this dtau
-      rj=dtau/dt+rjnt
+      rj=dtau/dtr+rjnt
       jj=int(rj)
       if(1 .le. jj .and. jj .lt. jnt)then
       r1=rj-jj

@@ -29,13 +29,17 @@ using namespace std;
  *  - the VAVG trace of analysis point i is used (the original always read the first
  *    VAVG trace, for every record; vtrack already used trace min(i, ntraces)).
  *  - the zero line (gam = 0) is only written inside the panel.
+ *  - tau_dt: tau spacing of the input traces. The original used the sample interval,
+ *    but OFFLINE4 / PREFIX_tau.sgy are decimated by iisr = int(8/sr+.1): their traces
+ *    are iisr*sr apart (8 ms), so the original FACTOR is in effect multiplied by iisr.
+ *    Default (0) keeps the original behaviour.
  */
 
-extern "C" void xtau2v_( float* tdata, float* vdata, float* vel, float* vmin, float* vmax, int* nt, float* dt, int* jnt );
+extern "C" void xtau2v_( float* tdata, float* vdata, float* vel, float* vmin, float* vmax, int* nt, float* dt, int* jnt, float* dtr );
 
 namespace mod_spk_tau2vfix {
   struct VariableStruct {
-    float vmin, vmax, factor;
+    float vmin, vmax, factor, taudt;
     int nt, ntrv, ntv;
     std::vector<float> vavg;   // ntrv traces x ntv samples
     int iens;
@@ -129,6 +133,8 @@ void init_mod_spk_tau2vfix_( csParamManager* param, csInitPhaseEnv* env, csLogWr
   if( v->vmax <= v->vmin ) writer->error("vel: VMAX must be larger than VMIN");
   v->factor = 0.0f;
   if( param->exists("factor") ) param->getFloat( "factor", &v->factor );
+  v->taudt = 0.0f;
+  if( param->exists("tau_dt") ) param->getFloat( "tau_dt", &v->taudt );
 
   std::string fn;
   param->getString( "vavg_file", &fn );
@@ -138,6 +144,8 @@ void init_mod_spk_tau2vfix_( csParamManager* param, csInitPhaseEnv* env, csLogWr
   writer->line("  Velocity range %g - %g m/s", v->vmin, v->vmax);
   if( v->factor < 0.1f ) writer->line("  Factor: time-variant calibration FACTM (1.0 at 0 s ... 0.6 at 10 s)");
   else                   writer->line("  Factor: %g", v->factor);
+  if( v->taudt > 0.0f ) writer->line("  Tau spacing of the traces: %g ms", v->taudt);
+  else                  writer->line("  Tau spacing of the traces: sample interval (as the original)");
 }
 
 //*************************************************************************************************
@@ -158,7 +166,8 @@ void exec_mod_spk_tau2vfix_( csTraceGather* traceGather, int* port, int* numTrcT
   for( int j = 0; j < ntr; j++ ) memcpy( &tdata[(size_t)j*nt], traceGather->trace(j)->getTraceSamples(), nt*sizeof(float) );
   vdata[0] = v->factor;   // as the original: factor passed in vdata(1,1)
   float dt = 0.001f*env->superHeader->sampleInt;
-  xtau2v_( &tdata[0], &vdata[0], &vel[0], &v->vmin, &v->vmax, &nt, &dt, &ntr );
+  float dtr = ( v->taudt > 0.0f ) ? 0.001f*v->taudt : dt;   // SEASEIS: tau spacing of the traces
+  xtau2v_( &tdata[0], &vdata[0], &vel[0], &v->vmin, &v->vmax, &nt, &dt, &ntr, &dtr );
   for( int j = 0; j < ntr; j++ ) memcpy( traceGather->trace(j)->getTraceSamples(), &vdata[(size_t)j*nt], nt*sizeof(float) );
 }
 
@@ -179,6 +188,10 @@ void params_mod_spk_tau2vfix_( csParamDef* pdef ) {
   pdef->addParam( "factor", "Calibration factor (DTAU = FACTOR*TAU*(1-VC/VM))", NUM_VALUES_FIXED,
                   "< 0.1: time-variant FACTM table of the original (default)" );
   pdef->addValue( "0", VALTYPE_NUMBER, "FACTOR" );
+  pdef->addParam( "tau_dt", "Tau spacing of the input traces [ms]", NUM_VALUES_FIXED,
+                  "0: sample interval, as the original. The tau panels of the migrations are decimated: 8 ms "
+                  "(header key of PREFIX_tau.sgy). With 8, FACTOR is the physical factor of DTAU = FACTOR*TAU*(1-VC/VM)." );
+  pdef->addValue( "0", VALTYPE_NUMBER, "ms" );
 }
 
 //************************************************************************************************
