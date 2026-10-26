@@ -139,3 +139,5 @@
   SPK_XVSPMIG2        1.0
   SPK_XVSPMIG1        1.0
   SPK_3DBCPMIG        1.0
+  SPK_TAU2VFIX        1.0
+  SPK_VTRACK          1.0
