@@ -4,7 +4,7 @@ MODDIR    = $(SRCDIR)/cs/modules/$(MODULE_NAME)
 MODULE    = $(MODDIR)/mod_$(MODULE_NAME).cc
 OBJS      = $(OBJDIR)/mod_$(MODULE_NAME).o
 F77DIR    = $(MODDIR)/fortran
-OBJS_F77  = $(OBJDIR)/spkvsp.o $(OBJDIR)/spkvsp_dvslib.o $(OBJDIR)/spkvsp_sub.o $(OBJDIR)/spkvsp_vevents.o
+OBJS_F77  = $(OBJDIR)/spkvsp.o $(OBJDIR)/spkvsp_dvslib.o $(OBJDIR)/spkvsp_sub.o $(OBJDIR)/spkvsp_vevents.o $(OBJDIR)/spkvsp_foc.o
 LIB_v1.0  = libmod_$(MODULE_NAME).so.1.0
 
 # -std=legacy: codigo Fortran 77 antigo (mesmo vetor passado como real e complexo)
@@ -41,3 +41,7 @@ $(OBJDIR)/spkvsp_sub.o: $(F77DIR)/vsp_sub.f
 
 $(OBJDIR)/spkvsp_vevents.o: $(F77DIR)/vevents_vsp.f
 	$(F77) -c $(F77_LEGACY) $(F77DIR)/vevents_vsp.f -o $(OBJDIR)/spkvsp_vevents.o
+
+# analise de coerencia (FOR LOR RNI WINDOW VMIN VMAX EPS), comum aos dois modulos
+$(OBJDIR)/spkvsp_foc.o: $(F77DIR)/vsp_foc.f
+	$(F77) -c $(F77_LEGACY) $(F77DIR)/vsp_foc.f -o $(OBJDIR)/spkvsp_foc.o

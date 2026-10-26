@@ -30,7 +30,8 @@ using namespace std;
 extern "C" {
   void spkvsp1_( float* d, int* nt, int* nntr, int* nrecs, float* sr, float* afit, float* alph, float* gz, float* spjn,
                 int* nnz, int* itzr, float* ddz, float* dx, float* apx, float* frq1, float* frq2, float* oty,
-                float* amute, int* ltm, int* lev1, float* stk, int* nstk, float* outr, int* ioutr, int* info, int* ierr );
+                float* amute, int* ltm, int* lev1, float* stk, int* nstk, float* outr, int* ioutr, int* info, int* ierr,
+                int* ifoc, float* rfoc, float* tdat, float* otau, float* ovc, float* ovavg, float* picks );
   void spkvxt2_( float* vel, float* dx, int* nxv, int* nyv, int* np, float* afit, float* ee, float* x, float* bfit, float* xx );
 }
 
@@ -45,6 +46,38 @@ namespace mod_spk_xvspmig1 {
     std::vector<float> afit;
     int   nxv, np;
     csTraceGather* gather;
+    // coherence (velocity focussing) analysis of xvspmig1: FOR LOR RNI WINDOW VMIN VMAX EPS
+    bool  focus; int ifor, ilor, irni; float window, vmin, vmax, seps;
+    std::string focusOut;
+  };
+  // SEASEIS: small SEG-Y writer (rev 1, IEEE big-endian) for the coherence analysis outputs
+  static void putBI( unsigned char* p, int v ) { p[0]=(v>>24)&255; p[1]=(v>>16)&255; p[2]=(v>>8)&255; p[3]=v&255; }
+  static void putBS( unsigned char* p, int v ) { p[0]=(v>>8)&255; p[1]=v&255; }
+  struct SegyOut {
+    FILE* fp; int ns; int count;
+    SegyOut() : fp(NULL), ns(0), count(0) {}
+    bool open( std::string const& fn, int nsamp, int sampleUs ) {
+      fp = fopen( fn.c_str(), "wb" ); ns = nsamp; count = 0;
+      if( fp == NULL ) return false;
+      unsigned char ebc[3200]; memset( ebc, 0x40, 3200 ); fwrite( ebc, 1, 3200, fp );
+      unsigned char bh[400]; memset( bh, 0, 400 );
+      putBI( bh, 1 ); putBS( bh+16, sampleUs ); putBS( bh+20, nsamp ); putBS( bh+24, 5 ); putBS( bh+54, 1 );
+      putBS( bh+300, 0x0100 ); putBS( bh+302, 1 );
+      fwrite( bh, 1, 400, fp );
+      return true;
+    }
+    void trace( float const* d, int sampleUs, int fldr, int trc, int key, int cdp ) {
+      unsigned char th[240]; memset( th, 0, 240 );
+      count++;
+      putBI( th, count ); putBI( th+4, count ); putBI( th+8, fldr ); putBI( th+12, trc ); putBI( th+20, cdp );
+      putBS( th+28, 1 ); putBI( th+36, key ); putBS( th+70, 1 ); putBS( th+114, ns ); putBS( th+116, sampleUs );
+      putBI( th+188, 1 ); putBI( th+192, cdp );
+      fwrite( th, 1, 240, fp );
+      std::vector<unsigned char> b( 4*ns );
+      for( int i = 0; i < ns; i++ ) { unsigned int u; memcpy( &u, &d[i], 4 ); putBI( &b[4*i], (int)u ); }
+      fwrite( &b[0], 1, b.size(), fp );
+    }
+    void close() { if( fp != NULL ) fclose( fp ); fp = NULL; }
   };
 
   static int const BASE = 12;
@@ -192,6 +225,22 @@ void init_mod_spk_xvspmig1_( csParamManager* param, csInitPhaseEnv* env, csLogWr
   if( param->exists("alph2") ) param->getFloat( "alph2", &vars->alph2 );
   if( param->exists("alph3") ) param->getFloat( "alph3", &vars->alph3 );
   if( param->exists("zzy") )   param->getFloat( "zzy", &vars->zzy );
+  vars->focus = false; vars->ifor = 0; vars->ilor = -1; vars->irni = 20; vars->window = 1000.0f;
+  vars->vmin = 5000.0f; vars->vmax = 10000.0f; vars->seps = 0.1f; vars->focusOut = "FOCUS";
+  if( param->exists("focus_x") ) {
+    vars->focus = true;
+    param->getInt( "focus_x", &vars->ifor, 0 ); param->getInt( "focus_x", &vars->ilor, 1 );
+    if( param->getNumValues("focus_x") > 2 ) param->getInt( "focus_x", &vars->irni, 2 );
+    if( vars->irni < 1 || vars->ilor < vars->ifor ) writer->error("focus_x must be FOR LOR RNI with LOR >= FOR and RNI >= 1");
+    if( param->exists("focus_window") ) param->getFloat( "focus_window", &vars->window );
+    if( param->exists("focus_vel") ) { param->getFloat( "focus_vel", &vars->vmin, 0 ); param->getFloat( "focus_vel", &vars->vmax, 1 ); }
+    if( vars->vmax <= vars->vmin ) writer->error("focus_vel must be VMIN VMAX with VMIN < VMAX");
+    if( param->exists("focus_eps") ) param->getFloat( "focus_eps", &vars->seps );
+    if( param->exists("focus_out") ) param->getString( "focus_out", &vars->focusOut );
+    writer->line("  Coherence analysis (xvspmig1): DPN %d-%d step %d, window %g ms, velocities %g-%g, EPS %g; output '%s_tau.sgy' (OFFLINE4), '%s_vcoh.sgy' (OFFLINE5), '%s_vavg.sgy' (VAVG), '%s_vtps.txt'",
+                 vars->ifor, vars->ilor, vars->irni, vars->window, vars->vmin, vars->vmax, vars->seps,
+                 vars->focusOut.c_str(), vars->focusOut.c_str(), vars->focusOut.c_str(), vars->focusOut.c_str());
+  }
   if( param->exists("output") ) {
     param->getString( "output", &text );
     if( !text.compare("records") ) vars->outputRecords = true;
@@ -442,15 +491,56 @@ void exec_mod_spk_xvspmig1_( csTraceGather* traceGather, int* port, int* numTrcT
   std::vector<float> outr( ioutr ? (size_t)nnzt*ntr : 1, 0.0f );
   int info[8] = {0,0,0,0,0,0,0,0};
   int ierr = 0;
+  // coherence analysis arrays (TDAT(jnt,nz2,ngsn) and the outputs)
+  int jnt = vars->focus ? (int)(vars->window/vars->sr) + 1 : 1;
+  int ngsn = vars->focus ? (vars->ilor - vars->ifor)/vars->irni + 1 : 1;
+  int nz2 = (vars->nnz - 1)/vars->itzr + 1 + vars->ltm/vars->itzr;
+  int iisr = std::max( 1, (int)(8.0f/vars->sr + 0.1f) ), jnt1 = (jnt-1)/iisr + 1;
+  int ifoc[4] = { vars->focus ? vars->ifor : 0, vars->focus ? vars->ilor : -1, vars->irni, jnt };
+  float rfoc[3] = { vars->vmin, vars->vmax, vars->seps };
+  std::vector<float> tdat( vars->focus ? (size_t)jnt*nz2*ngsn + 10 : 1 ), otau( vars->focus ? (size_t)nt*jnt1*ngsn : 1 ),
+                     ovc( otau.size() ), ovavg( vars->focus ? (size_t)nt*ngsn : 1 ), picks( vars->focus ? (size_t)201*ngsn : 1, 0.0f );
   float frq2 = vars->frq2;
   writer->line("  Migrating...");
   spkvsp1_( &d[0], &nt, &nntr, &nrecs, &vars->sr, &vars->afit[0], &alph[0], &gz[0], &spjn[0], &vars->nnz, &vars->itzr,
            &vars->ddz, &vars->dx, &vars->apx, &vars->frq1, &frq2, &vars->oty, &vars->amute, &vars->ltm, &vars->lev1,
-           &stk[0], &nstk, &outr[0], &ioutr, info, &ierr );
+           &stk[0], &nstk, &outr[0], &ioutr, info, &ierr,
+           ifoc, rfoc, &tdat[0], &otau[0], &ovc[0], &ovavg[0], &picks[0] );
   writer->line("  nx (FFT) %d  nt1 %d  frequency samples %d-%d  depth steps %d  velocity grid %d  memory %d MB",
                info[0], info[1], info[2], info[3], info[4], info[5], info[6]);
   if( ierr == 1 ) writer->error("No frequencies to migrate between FRQ1 and FRQ2");
   if( ierr == 2 ) writer->error("Not enough memory for migration (%d MB)", info[6]);
+  if( vars->focus ) {
+    std::string b = vars->focusOut;
+    int sus = (int)lrint( vars->sr*1000.0 ), mjnt = jnt/2 + 1;
+    float dv = (vars->vmax - vars->vmin)/(jnt - 1);
+    SegyOut ft, fv, fa;
+    if( !ft.open( b + "_tau.sgy", nt, sus ) || !fv.open( b + "_vcoh.sgy", nt, sus ) || !fa.open( b + "_vavg.sgy", nt, sus ) )
+      writer->error("Cannot write the coherence analysis files '%s_*.sgy'", b.c_str());
+    FILE* fvt = fopen( (b + "_vtps.txt").c_str(), "w" );
+    if( fvt != NULL ) { fprintf( fvt, " &rmspars\n vtp = \n" ); }
+    for( int i = 1; i <= ngsn; i++ ) {
+      int dpn = vars->ifor + vars->irni*(i-1);
+      for( int k = 1; k <= jnt1; k++ ) {
+        int j = (k-1)*iisr + 1;
+        size_t o = ((size_t)(i-1)*jnt1 + (k-1))*nt;
+        ft.trace( &otau[o], sus, i, k, (int)lrint((j - mjnt)*vars->sr), dpn );
+        fv.trace( &ovc[o], sus, i, k, (int)lrint(vars->vmin + (j-1)*dv), dpn );
+      }
+      fa.trace( &ovavg[(size_t)(i-1)*nt], sus, i, 1, 0, dpn );
+      float const* pk = &picks[(size_t)(i-1)*201];
+      int npk = (int)lrint( pk[0] );
+      if( fvt != NULL && npk > 0 ) {
+        fprintf( fvt, "%d\n", dpn );
+        for( int j = 1; j <= npk; j++ ) fprintf( fvt, "%d %d\n", (int)pk[2*j-1], (int)pk[2*j] );
+        fprintf( fvt, "0\n" );
+      }
+    }
+    if( fvt != NULL ) { fprintf( fvt, " &end\n" ); fclose( fvt ); }
+    ft.close(); fv.close(); fa.close();
+    writer->line("  Coherence analysis: %d points x %d traces written to '%s_tau.sgy', '%s_vcoh.sgy'; VAVG '%s_vavg.sgy'; picks '%s_vtps.txt'",
+                 ngsn, jnt1, b.c_str(), b.c_str(), b.c_str(), b.c_str());
+  }
   if( ierr == 3 ) writer->error("Node depth (%d depth steps) is too close to the image bottom: increase NNZ", info[7]);
 
   //--------------------------------------------------------------
@@ -562,6 +652,22 @@ void params_mod_spk_xvspmig1_( csParamDef* pdef ) {
   pdef->addParam( "vel_nz", "Number of depth samples after resampling (onl2dvsvels NZ)", NUM_VALUES_FIXED,
                   "Only with vel_dz. Default: as many as the file covers" );
   pdef->addValue( "", VALTYPE_NUMBER, "NZ" );
+  pdef->addParam( "focus_x", "Coherence (velocity focussing) analysis of xvspmig1: DPN positions FOR LOR RNI", NUM_VALUES_VARIABLE,
+                  "Without focus_x no analysis. At each position the continued fields (receiver x conjugate source) are kept in a window "
+                  "around t = 0, depth by depth, summed over the records, then squared, smoothed, converted to time (t2d2), skewed and "
+                  "mapped to velocity coherence (tau2v2); picks of the coherence maxima are listed in PREFIX_vtps.txt (vtps)" );
+  pdef->addValue( "", VALTYPE_NUMBER, "FOR: first DPN" );
+  pdef->addValue( "", VALTYPE_NUMBER, "LOR: last DPN" );
+  pdef->addValue( "20", VALTYPE_NUMBER, "RNI: increment" );
+  pdef->addParam( "focus_window", "Coherence analysis: time window [ms] (WINDOW)", NUM_VALUES_FIXED );
+  pdef->addValue( "1000", VALTYPE_NUMBER, "Window [ms]" );
+  pdef->addParam( "focus_vel", "Coherence analysis: velocity range (VMIN VMAX)", NUM_VALUES_FIXED );
+  pdef->addValue( "5000", VALTYPE_NUMBER, "VMIN" );
+  pdef->addValue( "10000", VALTYPE_NUMBER, "VMAX" );
+  pdef->addParam( "focus_eps", "Coherence analysis: threshold of the picked maxima (EPS)", NUM_VALUES_FIXED );
+  pdef->addValue( ".1", VALTYPE_NUMBER, "EPS" );
+  pdef->addParam( "focus_out", "Coherence analysis: prefix of the outputs PREFIX_tau.sgy, PREFIX_vcoh.sgy, PREFIX_vavg.sgy, PREFIX_vtps.txt", NUM_VALUES_FIXED );
+  pdef->addValue( "FOCUS", VALTYPE_STRING, "Prefix" );
   pdef->addParam( "output", "What to output", NUM_VALUES_FIXED );
   pdef->addValue( "stack", VALTYPE_OPTION );
   pdef->addOption( "stack", "Stacked depth section of all records (OFFLINE2); headers trcno, cmp, cmp_x" );

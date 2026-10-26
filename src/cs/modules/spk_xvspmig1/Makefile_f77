@@ -6,7 +6,7 @@ OBJS      = $(OBJDIR)/mod_$(MODULE_NAME).o
 F77DIR    = $(MODDIR)/fortran
 # rotinas comuns (multpspi, arriv6, cacomt2, xsgimrg2r, fftc...) do SPK_XVSPMIG2
 F77LIB    = $(SRCDIR)/cs/modules/spk_xvspmig2/fortran
-OBJS_F77  = $(OBJDIR)/spkvsp1.o $(OBJDIR)/spkvsp1_dvslib.o $(OBJDIR)/spkvsp1_sub.o $(OBJDIR)/spkvsp1_vevents.o
+OBJS_F77  = $(OBJDIR)/spkvsp1.o $(OBJDIR)/spkvsp1_dvslib.o $(OBJDIR)/spkvsp1_sub.o $(OBJDIR)/spkvsp1_vevents.o $(OBJDIR)/spkvsp1_foc.o
 LIB_v1.0  = libmod_$(MODULE_NAME).so.1.0
 
 # -std=legacy: codigo Fortran 77 antigo (mesmo vetor passado como real e complexo)
@@ -43,3 +43,7 @@ $(OBJDIR)/spkvsp1_sub.o: $(F77LIB)/vsp_sub.f
 
 $(OBJDIR)/spkvsp1_vevents.o: $(F77LIB)/vevents_vsp.f
 	$(F77) -c $(F77_LEGACY) $(F77LIB)/vevents_vsp.f -o $(OBJDIR)/spkvsp1_vevents.o
+
+# analise de coerencia (FOR LOR RNI WINDOW VMIN VMAX EPS), comum aos dois modulos
+$(OBJDIR)/spkvsp1_foc.o: $(F77LIB)/vsp_foc.f
+	$(F77) -c $(F77_LEGACY) $(F77LIB)/vsp_foc.f -o $(OBJDIR)/spkvsp1_foc.o

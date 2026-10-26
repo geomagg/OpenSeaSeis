@@ -22,7 +22,8 @@ c     SPKVXT2 : lista VXT -> funcoes densas (VEVENTS)
 c-----------------------------------------------------------------------
       SUBROUTINE SPKVSP(D,NT0,NNTR,NRECS0,SR,AFIT,ALPHR,GZR,SPJNR,
      :                  NNZ0,ITZR0,DDZ0,DX0,APX0,FRQ10,FRQ20,OTY,
-     :                  AMUTE,LTM0,LEV10,STK,NSTK,OUTR,IOUTR,INFO,IERR)
+     :                  AMUTE,LTM0,LEV10,STK,NSTK,OUTR,IOUTR,INFO,IERR,
+     :                  IFOC,RFOC,TDAT,OTAU,OVC,OVAVG,PICKS)
 c     D(NT0,NNTR,NRECS0)  registros de entrada
 c     AFIT                funcoes de velocidade: afit(1..3)=nxv,nyv,np;
 c                         por posicao 2*np+3 palavras: iy, ix, (v,z)...
@@ -36,6 +37,12 @@ c     IERR                0 ok, 1 banda vazia, 2 memoria, 3 fonte abaixo
 c                         do modelo de velocidade
       REAL D(NT0,NNTR,*),AFIT(*),ALPHR(*),GZR(*),SPJNR(*),STK(*),OUTR(*)
       INTEGER INFO(8),IFAX(5)
+c     SEASEIS: analise de coerencia (FOR LOR RNI WINDOW VMIN VMAX EPS)
+c     IFOC: ifor ilor irni jnt (ilor < ifor: sem analise)
+c     RFOC: vmin vmax eps ; TDAT(jnt,nz2,ngsn) ; saidas OTAU, OVC
+c     (nt x jnt1 x ngsn), OVAVG (nt x ngsn), PICKS (201 x ngsn)
+      INTEGER IFOC(*)
+      REAL RFOC(*),TDAT(*),OTAU(*),OVC(*),OVAVG(*),PICKS(*)
       REAL, ALLOCATABLE :: WK(:),VVV(:),DAT(:),TRC(:)
       character*4 vint,rfc,lunin,lunout
       common/velneed/nrecs,irec,lev,vinc,ipass,npass,nxv,lag,locv,ispj
@@ -68,8 +75,13 @@ c   ***   parametros no common, como o programa principal
       GAM1=0.
       ALPH2=0.
       ALPH3=0.
-      IFOR=0
-      ILOR=-1
+      IFOR=IFOC(1)
+      ILOR=IFOC(2)
+      RNI=IFOC(3)
+      WINDOW=(IFOC(4)-1)*SR
+      VMIN=RFOC(1)
+      VMAX=RFOC(2)
+      SEPS=RFOC(3)
 c     SEASEIS: RFSTIR=1 -> posicao i da grade de velocidade = DPN i+OTY
       RFSTIR=1.
       NPASS=1
@@ -150,18 +162,28 @@ c   ***   memoria
 c   ***   velocidades por passo (cacomt2, pares velocidade-profundidade)
       CALL CACOMT2(AFIT,VVV,WK)
       CALL SPKVSPW(WK,WK,VVV,DAT,TRC,D,NNTR,NT1,NL,NH,ALPHR,GZR,SPJNR,
-     :             AMUTE,STK,NSTK,OUTR,IOUTR)
+     :             AMUTE,STK,NSTK,OUTR,IOUTR,TDAT)
       DEALLOCATE(WK,VVV,DAT,TRC)
+      IF(ILOR.GE.IFOR)THEN
+        NGSN=(ILOR-IFOR)/NINT(RNI)+1
+c       SEASEIS: VMIN/VMAX do common sao usados como rascunho na
+c       migracao (como no original, que guardava vmn=vmin, vmx=vmax)
+        CALL SPKV1FOC(TDAT,AFIT,NT,SR,NZ2,ITZR*DDZ,IFOR,NINT(RNI),
+     :       IFOC(4),NGSN,RFOC(1),RFOC(2),RFOC(3),BETA,NNZ+LTM,OTAU,OVC,
+     :       OVAVG,
+     :       PICKS,2)
+      ENDIF
       RETURN
       END
 c
       SUBROUTINE SPKVSPW(Y,S,IFITVV,DATA,VEL,D,NNTR,NT1,NL,NH,ALPHR,
-     :                   GZR,SPJNR,AMUTE,STKDAT,NSTK,OUTR,IOUTR)
+     :                   GZR,SPJNR,AMUTE,STKDAT,NSTK,OUTR,IOUTR,TDAT)
 c     laco principal de xvspmig2.f; Y (complexo) e S (real) sao o mesmo
 c     vetor, como a EQUIVALENCE (s(1),y(1)) do original
       COMPLEX Y(*)
       REAL S(*),IFITVV(*),DATA(*),VEL(*),D(NT,NNTR,*),ALPHR(*),GZR(*)
-      REAL SPJNR(*),STKDAT(*),OUTR(*)
+      REAL SPJNR(*),STKDAT(*),OUTR(*),TDAT(*)
+      COMPLEX, ALLOCATABLE :: WF(:),WB(:)
       character*4 vint,rfc,lunin,lunout
       common/velneed/nrecs,irec,lev,vinc,ipass,npass,nxv,lag,locv,ispj
       common/migneed/nx,nt,nz,itzr,vint,dt,nnz,ddz,beta,dx,apx,maxscr,
@@ -197,6 +219,18 @@ c   ***   s (real) indicies start at end of complex
       id=ic+nxws
       is= 2*(id+4*nxws)
       nnzt=nnz+ltm
+c     SEASEIS: analise de coerencia; WF = y(ia), WB = y(ib)/y(ic)
+      irni=nint(rni)
+      twindow=window
+      jnt=twindow/sr+1
+      if(ilor.ge.ifor)then
+      allocate(wf(22*nt1+10),wb(nws+12))
+      ngsn=(ilor-ifor)/irni+1
+      llltm=ltm/itzr
+      do j=1,jnt*(nz+llltm)*ngsn
+      tdat(j)=0.
+      enddo
+      endif
 c   ***   initialize stacked section
       do 220 j=1,nnzt*nstk
 220   stkdat(j)=0.
@@ -321,6 +355,33 @@ c   ***   apply amplitude restoration
         end do
         end do
       iuu=iuu+nwdst
+c   ***   SEASEIS: analise de coerencia de xvspmig2.f: janela de
+c   ***   twindow ms do campo continuado (y(iz)*conjg(y(iz1))) em cada
+c   ***   posicao FOR..LOR (passo RNI) e cada passo de profundidade
+      if(ilor.ge.ifor)then
+      do j=1,nx
+      igsn=j+spjn+.5
+      if(igsn.ge.ifor.and.igsn.le.ilor.and.mod(igsn-ifor,irni).eq.0)then
+      call clear(wf,2*nt1)
+      ii=nl
+      do jj=0,nws-1
+      wf(ii+jj)=y(iz+j-1+jj*nx)*conjg(y(iz1+j-1+jj*nx))
+      end do
+c   *** shift data back in time by .5*twindow
+      shf=-.5*twindow/sr
+c   ***   shift complex data by this amount
+      call vshift1(wf(ii),wb,wb,wb(nws+3),shf,delw,nl,nh,1,1.)
+c   ***   inverse transform
+      call fftc(wf,wf(nt1+1),2,2*nt1,nt1,1,+1)
+c   ***   sum time data to appropriate gsn locations
+      jgsn=(igsn-ifor)/irni +1
+      itdat=((jgsn-1)*nz2+k0-1)*jnt+1
+      do jj=1,jnt
+      tdat(itdat+jj-1)=tdat(itdat+jj-1)+real(wf(jj))
+      end do
+      end if
+      end do
+      end if
         endif
 2000   continue
 c   ***   write out nnz+ltm depth samples; apply mute (angle AMUTE)
