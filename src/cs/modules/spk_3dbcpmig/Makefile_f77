@@ -6,7 +6,7 @@ OBJS      = $(OBJDIR)/mod_$(MODULE_NAME).o
 F77DIR    = $(MODDIR)/fortran
 # rotinas comuns (fftl2d, dwnn, fftc, vshift1, sgivshift1, sgimrg2r, bndry...) do SPK_DVSMIG3D
 F77LIB    = $(SRCDIR)/cs/modules/spk_dvsmig3d/fortran
-OBJS_F77  = $(OBJDIR)/spkbcp3d.o $(OBJDIR)/spkbcp3d_sub.o $(OBJDIR)/spkbcp3d_dvslib.o $(OBJDIR)/spkbcp3d_dvssub.o $(OBJDIR)/spkbcp3d_cfft.o $(OBJDIR)/spkbcp3d_omp.o
+OBJS_F77  = $(OBJDIR)/spkbcp3d.o $(OBJDIR)/spkbcp3d_sub.o $(OBJDIR)/spkbcp3d_dvslib.o $(OBJDIR)/spkbcp3d_dvssub.o $(OBJDIR)/spkbcp3d_cfft.o $(OBJDIR)/spkbcp3d_omp.o $(OBJDIR)/spkbcp3d_foc.o
 LIB_v1.0  = libmod_$(MODULE_NAME).so.1.0
 
 # -std=legacy: codigo Fortran 77 antigo (mesmo vetor passado como real e complexo)
@@ -54,3 +54,6 @@ $(OBJDIR)/spkbcp3d_cfft.o: $(F77LIB)/cfftpack.f $(MODDIR)/Makefile_f77
 
 $(OBJDIR)/spkbcp3d_omp.o: $(F77DIR)/bcp3d_omp.f $(MODDIR)/Makefile_f77
 	$(F77) -c $(F77_OMP) $(F77DIR)/bcp3d_omp.f -o $(OBJDIR)/spkbcp3d_omp.o
+
+$(OBJDIR)/spkbcp3d_foc.o: $(F77DIR)/bcp3d_foc.f $(MODDIR)/Makefile_f77
+	$(F77) -c $(F77_LEGACY) $(F77DIR)/bcp3d_foc.f -o $(OBJDIR)/spkbcp3d_foc.o

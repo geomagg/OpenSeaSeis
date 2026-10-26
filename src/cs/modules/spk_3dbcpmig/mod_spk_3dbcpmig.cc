@@ -39,7 +39,10 @@ extern "C" {
                float* dt, int* nt, float* beta, float* vels, float* vrms, int* maxv, float* e, float* x, float* xx );
   void spkbr_( float* d, int* ntd, int* ntr, float* sxh, float* syh, int* igx, int* igy, int* igz, int* ip, float* rp,
                float* vels, float* vrms, float* zmut, float* hz, float* cube, float* wk, float* data, float* tr1, float* yt,
-               float* xndx, float* xndx1, float* rr, int* info );
+               float* xndx, float* xndx1, float* rr, int* info, int* ifoc, float* tdat );
+  void spkbfoc_( float* tdat, float* vels, int* nxout, int* nyout, int* nz, float* dz, int* nt, float* dt, int* jnt,
+                 int* ngsnx, int* ngsny, int* iforx, int* ifory, int* irnix, int* irniy, float* vmn, float* vmx,
+                 float* otau, float* ovc, float* ovavg, float* zd, float* td, float* s );
   void spkbthr_( int* n );
   void spkbt_( float* x, float* u, float* e, float* s, float* vdat, int* ntv, int* nxv, int* nyv, float* dzv, int* nt,
                float* sr, int* nnz, float* ddz, float* dpnx, float* dpny, float* v );
@@ -57,6 +60,9 @@ namespace mod_spk_3dbcpmig {
     int   hmtv, hmrv, ntv; float dzv;
     std::vector<float> vdat;
     csTraceGather* gather;
+    // velocity focussing analysis (test3dbcpmig FORX LORX RNIX FORY LORY RNIY WINDOW VMIN VMAX)
+    bool  focus; int forx, lorx, rnix, fory, lory, rniy; float window, vmin, vmax;
+    std::string tdatFile, focusOut;
   };
   static int const BASE = 12;
   static inline float getF( char const* p, bool sw ) {
@@ -124,6 +130,46 @@ namespace mod_spk_3dbcpmig {
     vd->swap( out ); *hmt = nx2; *hmr = ny2;
   }
   double hval( csTrace* trc, int id ) { return trc->getTraceHeader()->doubleValue( id ); }
+
+  // SEASEIS: small SEG-Y writer (rev 1, IEEE big-endian) for the focussing analysis outputs
+  static void putBI( unsigned char* p, int v ) { p[0]=(v>>24)&255; p[1]=(v>>16)&255; p[2]=(v>>8)&255; p[3]=v&255; }
+  static void putBS( unsigned char* p, int v ) { p[0]=(v>>8)&255; p[1]=v&255; }
+  struct SegyOut {
+    FILE* fp; int ns; int count;
+    SegyOut() : fp(NULL), ns(0), count(0) {}
+    bool open( std::string const& fn, int nsamp, int sampleUs, char const* text ) {
+      fp = fopen( fn.c_str(), "wb" ); ns = nsamp; count = 0;
+      if( fp == NULL ) return false;
+      unsigned char ebc[3200]; memset( ebc, 0x40, 3200 );
+      static unsigned char const a2e[128] = {
+        0x00,0x01,0x02,0x03,0x37,0x2D,0x2E,0x2F,0x16,0x05,0x25,0x0B,0x0C,0x0D,0x0E,0x0F,0x10,0x11,0x12,0x13,0x3C,0x3D,0x32,0x26,
+        0x18,0x19,0x3F,0x27,0x1C,0x1D,0x1E,0x1F,0x40,0x5A,0x7F,0x7B,0x5B,0x6C,0x50,0x7D,0x4D,0x5D,0x5C,0x4E,0x6B,0x60,0x4B,0x61,
+        0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,0xF8,0xF9,0x7A,0x5E,0x4C,0x7E,0x6E,0x6F,0x7C,0xC1,0xC2,0xC3,0xC4,0xC5,0xC6,0xC7,
+        0xC8,0xC9,0xD1,0xD2,0xD3,0xD4,0xD5,0xD6,0xD7,0xD8,0xD9,0xE2,0xE3,0xE4,0xE5,0xE6,0xE7,0xE8,0xE9,0xAD,0xE0,0xBD,0x5F,0x6D,
+        0x79,0x81,0x82,0x83,0x84,0x85,0x86,0x87,0x88,0x89,0x91,0x92,0x93,0x94,0x95,0x96,0x97,0x98,0x99,0xA2,0xA3,0xA4,0xA5,0xA6,
+        0xA7,0xA8,0xA9,0xC0,0x4F,0xD0,0xA1,0x07 };
+      for( int i = 0; text[i] != 0 && i < 3200; i++ ) ebc[i] = a2e[ (unsigned char)text[i] & 127 ];
+      fwrite( ebc, 1, 3200, fp );
+      unsigned char bh[400]; memset( bh, 0, 400 );
+      putBI( bh, 1 ); putBS( bh+16, sampleUs ); putBS( bh+20, nsamp ); putBS( bh+24, 5 ); putBS( bh+54, 1 );
+      putBS( bh+300, 0x0100 ); putBS( bh+302, 1 );
+      fwrite( bh, 1, 400, fp );
+      return true;
+    }
+    void trace( float const* d, int sampleUs, int fldr, int trc, int key, int iline, int xline, double x, double y ) {
+      unsigned char th[240]; memset( th, 0, 240 );
+      count++;
+      putBI( th, count ); putBI( th+4, count ); putBI( th+8, fldr ); putBI( th+12, trc ); putBI( th+20, fldr );
+      putBS( th+28, 1 ); putBI( th+36, key ); putBS( th+70, -100 );
+      putBS( th+114, ns ); putBS( th+116, sampleUs );
+      putBI( th+180, (int)lrint(x*100.0) ); putBI( th+184, (int)lrint(y*100.0) ); putBI( th+188, iline ); putBI( th+192, xline );
+      fwrite( th, 1, 240, fp );
+      std::vector<unsigned char> b( 4*ns );
+      for( int i = 0; i < ns; i++ ) { unsigned int u; memcpy( &u, &d[i], 4 ); putBI( &b[4*i], (int)u ); }
+      fwrite( &b[0], 1, b.size(), fp );
+    }
+    void close() { if( fp != NULL ) fclose( fp ); fp = NULL; }
+  };
 }
 using namespace mod_spk_3dbcpmig;
 
@@ -141,6 +187,8 @@ void init_mod_spk_3dbcpmig_( csParamManager* param, csInitPhaseEnv* env, csLogWr
   v->nxout = 0; v->nyout = 0; v->dx = 0; v->dy = 0; v->ddz = 0; v->apx = 0; v->frq1 = 0; v->frq2 = 0;
   v->amute = 30; v->gam1 = 0; v->beta = 0; v->eps = 0; v->xll = 0; v->yll = 0; v->xlr = 100; v->ylr = 0;
   v->outTime = false; v->gather = NULL;
+  v->focus = false; v->forx = v->lorx = v->rnix = v->fory = v->lory = v->rniy = 0;
+  v->window = 1000.0f; v->vmin = 0.0f; v->vmax = 0.0f; v->focusOut = "FOCUS";
   v->hdrSx = "sou_x"; v->hdrSy = "sou_y"; v->hdrGx = "rec_x"; v->hdrGy = "rec_y"; v->hdrGz = "rec_wdep";
   std::string text;
   if( param->exists("itype") ) param->getInt( "itype", &v->itype );
@@ -178,6 +226,22 @@ void init_mod_spk_3dbcpmig_( csParamManager* param, csInitPhaseEnv* env, csLogWr
     param->getDouble( "node_xyz", &v->nodeX, 0 );
     param->getDouble( "node_xyz", &v->nodeY, 1 );
     param->getDouble( "node_xyz", &v->nodeZ, 2 );
+  }
+  if( param->exists("focus_x") || param->exists("focus_y") ) {
+    if( !param->exists("focus_x") || !param->exists("focus_y") ) writer->error("Velocity analysis: give both 'focus_x' and 'focus_y'");
+    v->focus = true;
+    param->getInt( "focus_x", &v->forx, 0 ); param->getInt( "focus_x", &v->lorx, 1 );
+    if( param->getNumValues("focus_x") > 2 ) param->getInt( "focus_x", &v->rnix, 2 ); else v->rnix = 1;
+    param->getInt( "focus_y", &v->fory, 0 ); param->getInt( "focus_y", &v->lory, 1 );
+    if( param->getNumValues("focus_y") > 2 ) param->getInt( "focus_y", &v->rniy, 2 ); else v->rniy = 1;
+    if( v->rnix < 1 || v->rniy < 1 || v->lorx < v->forx || v->lory < v->fory || v->forx < 1 || v->fory < 1 )
+      writer->error("Velocity analysis: 'focus_x'/'focus_y' must be FIRST LAST STEP, with FIRST >= 1, LAST >= FIRST, STEP >= 1");
+    if( param->exists("focus_window") ) param->getFloat( "focus_window", &v->window );
+    if( !param->exists("focus_vel") ) writer->error("Velocity analysis: 'focus_vel' (VMIN VMAX) is required");
+    param->getFloat( "focus_vel", &v->vmin, 0 ); param->getFloat( "focus_vel", &v->vmax, 1 );
+    if( v->vmax <= v->vmin || v->vmin <= 0.0f ) writer->error("Velocity analysis: 'focus_vel' must be VMIN VMAX with 0 < VMIN < VMAX");
+    if( param->exists("focus_tdat") ) param->getString( "focus_tdat", &v->tdatFile );
+    if( param->exists("focus_out") ) param->getString( "focus_out", &v->focusOut );
   }
   if( param->exists("output") ) {
     param->getString( "output", &text );
@@ -242,6 +306,13 @@ void init_mod_spk_3dbcpmig_( csParamManager* param, csInitPhaseEnv* env, csLogWr
                v->ifr, v->ilr, v->hdrSx.c_str(), v->hdrSy.c_str(), v->hdrGx.c_str(), v->hdrGy.c_str(), v->hdrGz.c_str());
   if( !v->indataFile.empty() ) writer->line("  Image summed into '%s' (as 'indata')", v->indataFile.c_str());
   if( v->nodeOv ) writer->line("  Node position from parameter node_xyz (DBASE): %.1f %.1f depth %.1f, for every record", v->nodeX, v->nodeY, v->nodeZ);
+  if( v->focus ) {
+    if( v->lorx > v->nxout || v->lory > v->nyout ) writer->error("Velocity analysis: focus_x/focus_y beyond the output grid (%d x %d)", v->nxout, v->nyout);
+    writer->line("  Velocity analysis (focussing): traces %d-%d step %d, lines %d-%d step %d, window %g ms, velocities %g-%g",
+                 v->forx, v->lorx, v->rnix, v->fory, v->lory, v->rniy, v->window, v->vmin, v->vmax);
+    writer->line("    output '%s_tau.sgy' (OFFLINE4), '%s_vcoh.sgy' (OFFLINE5), '%s_vavg.sgy' (VAVG);  TDAT %s", v->focusOut.c_str(),
+                 v->focusOut.c_str(), v->focusOut.c_str(), v->tdatFile.empty() ? "in memory (this run only)" : ("summed into '" + v->tdatFile + "'").c_str());
+  }
 
   v->gather = new csTraceGather( hdef );
   if( !hdef->headerExists(HDR_TRCNO.name) ) hdef->addStandardHeader( HDR_TRCNO.name );
@@ -310,6 +381,29 @@ void exec_mod_spk_3dbcpmig_( csTraceGather* traceGather, int* port, int* numTrcT
     else writer->line("  '%s' does not exist: new image", v->indataFile.c_str());
   }
 
+  // velocity focussing analysis: TDAT(jnt*ngsns, nz), summed node by node like indata
+  int ifoc[8] = { 0, 0, 1, 1, 1, 1, 1, 0 };
+  int jnt = 1, ngsnx = 0, ngsny = 0;
+  if( v->focus ) {
+    ngsnx = (v->lorx - v->forx)/v->rnix + 1; ngsny = (v->lory - v->fory)/v->rniy + 1;
+    jnt = (int)(v->window/v->sr) + 1;
+    if( jnt < 5 ) writer->error("Velocity analysis: window %g ms too short for sample interval %g ms", v->window, v->sr);
+    ifoc[0] = ngsnx; ifoc[1] = ngsny; ifoc[2] = v->forx; ifoc[3] = v->fory; ifoc[4] = v->rnix; ifoc[5] = v->rniy; ifoc[6] = jnt;
+  }
+  int ngsns = ngsnx*ngsny;
+  std::vector<float> tdat( std::max( (size_t)1, (size_t)jnt*ngsns*nz ), 0.0f );
+  if( v->focus && !v->tdatFile.empty() ) {
+    FILE* fp = fopen( v->tdatFile.c_str(), "rb" );
+    if( fp != NULL ) {
+      size_t n = fread( &tdat[0], sizeof(float), tdat.size(), fp );
+      fclose( fp );
+      if( n != tdat.size() ) writer->error("'%s' has %d values, expected %d (JNT*points*NZ): different analysis parameters?", v->tdatFile.c_str(), (int)n, (int)tdat.size());
+      writer->line("  TDAT read from '%s' (summing)", v->tdatFile.c_str());
+    }
+    else writer->line("  '%s' does not exist: new TDAT", v->tdatFile.c_str());
+  }
+  if( v->focus ) writer->line("  Velocity analysis: %d x %d points, JNT %d tau samples (%g ms)", ngsnx, ngsny, jnt, (jnt-1)*v->sr);
+
   // work space (as bcpmig: t arrays, y/z planes, a b c d, real arrays)
   size_t nxyws = (size_t)nxy*nws;
   size_t id = 1 + 2*(size_t)nxy + 2*nxyws + 3*(size_t)nxy;
@@ -338,7 +432,7 @@ void exec_mod_spk_3dbcpmig_( csTraceGather* traceGather, int* port, int* numTrcT
     int info[10] = {0,0,0,0,0,0,0,0,0,0};
     for( size_t j = 0; j < wk.size(); j++ ) wk[j] = 0.0f;
     spkbr_( &d[0], &ntd, &nr, &sx[0], &sy[0], &igx, &igy, &igz, ip, rp, &vels[0], &vrms[0], &zmut[0], &hz[0], &cube[0],
-            &wk[0], &data[0], &tr1[0], &yt[0], &xndx[0], &xndx1[0], &rr[0], info );
+            &wk[0], &data[0], &tr1[0], &yt[0], &xndx[0], &xndx1[0], &rr[0], info, ifoc, &tdat[0] );
     if( info[2] == 0 ) {
       writer->warning("Record %d (node %d %d, depth %d): node outside the local grid, record skipped", irec, igx, igy, igz);
       continue;
@@ -354,6 +448,51 @@ void exec_mod_spk_3dbcpmig_( csTraceGather* traceGather, int* port, int* numTrcT
     fwrite( &cube[0], sizeof(float), cube.size(), fp );
     fclose( fp );
     writer->line("  Image written to '%s'", v->indataFile.c_str());
+  }
+  if( v->focus ) {
+    if( !v->tdatFile.empty() ) {
+      FILE* fp = fopen( v->tdatFile.c_str(), "wb" );
+      if( fp == NULL ) writer->error("Cannot write '%s'", v->tdatFile.c_str());
+      fwrite( &tdat[0], sizeof(float), tdat.size(), fp );
+      fclose( fp );
+      writer->line("  TDAT written to '%s'", v->tdatFile.c_str());
+    }
+    // xvelcoh for every analysis point -> OFFLINE4 (tau deviation), OFFLINE5 (velocity coherence), VAVG
+    int nt = v->nt, ntz = std::max( nt, nz );
+    float dzf = v->itzr*v->ddz;
+    std::vector<float> otau( (size_t)nt*jnt*ngsns ), ovc( (size_t)nt*jnt*ngsns ), ovavg( (size_t)nt*ngsns );
+    std::vector<float> zd( (size_t)nz*jnt + 10 ), td( (size_t)(ntz + nt)*jnt + 10 ), ss( 6*(size_t)(nt + nz) + 1000 );
+    spkbfoc_( &tdat[0], &vels[0], &v->nxout, &v->nyout, &nz, &dzf, &nt, &dt, &jnt, &ngsnx, &ngsny, &v->forx, &v->fory,
+              &v->rnix, &v->rniy, &v->vmin, &v->vmax, &otau[0], &ovc[0], &ovavg[0], &zd[0], &td[0], &ss[0] );
+    int iisr = std::max( 1, (int)(8.0f/v->sr + 0.1f) );
+    int mjnt = jnt/2 + 1, sus = (int)lrint( v->sr*1000.0 );
+    float dv = (v->vmax - v->vmin)/(jnt - 1);
+    double rr0 = sqrt( (v->xlr-v->xll)*(v->xlr-v->xll) + (v->ylr-v->yll)*(v->ylr-v->yll) );
+    double ux0 = (v->xlr-v->xll)/rr0, uy0 = (v->ylr-v->yll)/rr0;
+    SegyOut ft, fv, fa;
+    std::string base = v->focusOut;
+    if( !ft.open( base + "_tau.sgy", nt, sus, "C 1 SPK_3DBCPMIG VELOCITY FOCUSSING - TAU DEVIATION (OFFLINE4)  FFID = POINT, OFFSET = TAU [MS]" ) ||
+        !fv.open( base + "_vcoh.sgy", nt, sus, "C 1 SPK_3DBCPMIG VELOCITY FOCUSSING - VELOCITY COHERENCE (OFFLINE5)  FFID = POINT, OFFSET = VELOCITY" ) ||
+        !fa.open( base + "_vavg.sgy", nt, sus, "C 1 SPK_3DBCPMIG VELOCITY FOCUSSING - AVERAGE VELOCITY (VAVG), ONE TRACE PER POINT" ) )
+      writer->error("Cannot write the velocity analysis files '%s_*.sgy'", base.c_str());
+    for( int iy = 1; iy <= ngsny; iy++ ) {
+      for( int ix = 1; ix <= ngsnx; ix++ ) {
+        int ii = (iy-1)*ngsnx + ix;
+        int dpnx = (ix-1)*v->rnix + v->forx, dpny = (iy-1)*v->rniy + v->fory;
+        double bx = v->xll + (dpnx-1)*ux0*v->dx - (dpny-1)*uy0*v->dy, by = v->yll + (dpnx-1)*uy0*v->dx + (dpny-1)*ux0*v->dy;
+        for( int j = 1; j <= jnt; j++ ) {
+          if( (j-1) % iisr != 0 ) continue;
+          int jtrc = (j-1)/iisr + 1;
+          size_t o = (size_t)(ii-1)*nt*jnt + (size_t)(j-1)*nt;
+          ft.trace( &otau[o], sus, ii, jtrc, (int)lrint((j-mjnt)*v->sr), dpny, dpnx, bx, by );
+          fv.trace( &ovc[o], sus, ii, jtrc, (int)lrint(v->vmin + (j-1)*dv), dpny, dpnx, bx, by );
+        }
+        fa.trace( &ovavg[(size_t)(ii-1)*nt], sus, ii, 1, 0, dpny, dpnx, bx, by );
+      }
+    }
+    ft.close(); fv.close(); fa.close();
+    writer->line("  Velocity analysis written: %d points x %d traces (every %d tau samples) to '%s_tau.sgy' and '%s_vcoh.sgy', VAVG to '%s_vavg.sgy'",
+                 ngsns, (jnt-1)/iisr + 1, iisr, base.c_str(), base.c_str(), base.c_str());
   }
 
   // output: OFFLINE2 (depth) or OFFLINE3 (time); record = line (y), trace = x
@@ -474,6 +613,26 @@ void params_mod_spk_3dbcpmig_( csParamDef* pdef ) {
   pdef->addParam( "threads", "Number of CPU threads (OpenMP, frequencies migrated in parallel)", NUM_VALUES_FIXED,
                   "Default 0: OMP_NUM_THREADS if set, else all cores. Same result for any number of threads" );
   pdef->addValue( "0", VALTYPE_NUMBER, "Threads" );
+  pdef->addParam( "focus_x", "Velocity analysis (focussing, test3dbcpmig FORX LORX RNIX): analysis points along x, in output traces", NUM_VALUES_VARIABLE,
+                  "Without focus_x/focus_y no analysis is done. At each point the continued wavefield is kept in a window around the arrival time, "
+                  "depth by depth (TDAT, summed over the nodes), then converted to tau-deviation and velocity-coherence panels (xvelcoh)" );
+  pdef->addValue( "", VALTYPE_NUMBER, "FORX: first output trace" );
+  pdef->addValue( "", VALTYPE_NUMBER, "LORX: last output trace" );
+  pdef->addValue( "1", VALTYPE_NUMBER, "RNIX: increment" );
+  pdef->addParam( "focus_y", "Velocity analysis: analysis points along y, in output lines (FORY LORY RNIY)", NUM_VALUES_VARIABLE );
+  pdef->addValue( "", VALTYPE_NUMBER, "FORY: first output line" );
+  pdef->addValue( "", VALTYPE_NUMBER, "LORY: last output line" );
+  pdef->addValue( "1", VALTYPE_NUMBER, "RNIY: increment" );
+  pdef->addParam( "focus_window", "Velocity analysis: tau window centred on the arrival time [ms] (WINDOW)", NUM_VALUES_FIXED );
+  pdef->addValue( "1000", VALTYPE_NUMBER, "Window [ms]" );
+  pdef->addParam( "focus_vel", "Velocity analysis: velocity range of the coherence panels (VMIN VMAX)", NUM_VALUES_FIXED );
+  pdef->addValue( "", VALTYPE_NUMBER, "VMIN" );
+  pdef->addValue( "", VALTYPE_NUMBER, "VMAX" );
+  pdef->addParam( "focus_tdat", "Velocity analysis: binary file with TDAT, read if it exists and written at the end (as 'indata')", NUM_VALUES_FIXED,
+                  "Lets several runs (nodes) add into the same analysis; delete it to start a new one" );
+  pdef->addValue( "", VALTYPE_STRING, "File name" );
+  pdef->addParam( "focus_out", "Velocity analysis: prefix of the output SEG-Y files PREFIX_tau.sgy, PREFIX_vcoh.sgy, PREFIX_vavg.sgy", NUM_VALUES_FIXED );
+  pdef->addValue( "FOCUS", VALTYPE_STRING, "Prefix" );
   pdef->addParam( "output", "Output cube", NUM_VALUES_FIXED );
   pdef->addValue( "depth", VALTYPE_OPTION );
   pdef->addOption( "depth", "Depth cube (OFFLINE2): NNZ samples at DDZ" );

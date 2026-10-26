@@ -161,14 +161,17 @@ c     SEASEIS: ntout limitado ao tamanho de VRMS
       end
 c
       SUBROUTINE SPKBR(D,NTD,NTR,SXH,SYH,IGX,IGY,IGZ,IP,RP,VELS,VRMS,
-     :                 ZMUT,HZ,CUBE,WK,DATA,TR1,YT,XNDX,XNDX1,RR,INFO)
+     :                 ZMUT,HZ,CUBE,WK,DATA,TR1,YT,XNDX,XNDX1,RR,INFO,
+     :                 IFOC,TDAT)
+c     IFOC: analise de focalizacao (ngsnx ngsny iforx ifory irnix
+c           irniy jnt), ngsnx*ngsny = 0: sem analise; TDAT acumulado
 c     IP:  nx ny nt nt1 nlow nhigh nz itzr nxout nyout itype
 c     RP:  dx dy dt ddz apx gam1 xll0 yll0 xlr0 ylr0 eps
 c     INFO(1..4) = ixout iyout ok(1)/fora(0) nlive ; RINFO via INFO(5..)
       REAL D(NTD,*),SXH(*),SYH(*),VELS(*),VRMS(*),ZMUT(*),HZ(*)
       REAL CUBE(*),WK(*),DATA(*),TR1(*),XNDX(*),XNDX1(*),RR(*)
-      INTEGER IP(*),INFO(*)
-      REAL RP(*)
+      INTEGER IP(*),INFO(*),IFOC(*)
+      REAL RP(*),TDAT(*)
       COMPLEX YT(*)
       nx=ip(1)
       ny=ip(2)
@@ -199,7 +202,7 @@ c     planos de frequencia em y(iy), iy = 1+2*nxy (complexo) do SPKBRW
       INFO(4)=nlive
       CALL SPKBRW(WK,WK,DATA,VELS,ZMUT,HZ,CUBE,nx,ny,nt,nt1,nlow,nhigh,
      : nz,itzr,nxout,nyout,itype,dx,dy,dt,ddz,apx,gam1,xll0,yll0,
-     : xll1,yll1,xlr1,ylr1,sx,sy,sz,INFO)
+     : xll1,yll1,xlr1,ylr1,sx,sy,sz,INFO,IFOC,TDAT)
       RETURN
       END
 c
@@ -359,13 +362,19 @@ c     SEASEIS: frequencias nlow..nhigh direto no plano de cada frequencia
 c
       SUBROUTINE SPKBRW(Y,S,DATA,VELS,ZMUT,HZ,CUBE,nx,ny,nt,nt1,nlow,
      : nhigh,nz,itzr,nxout,nyout,itype,dx,dy,dt,ddz,apx,gam1,xll,yll,
-     : xll1,yll1,xlr1,ylr1,sx,sy,sz,INFO)
+     : xll1,yll1,xlr1,ylr1,sx,sy,sz,INFO,IFOC,TDAT)
 c     laco de profundidade de bcpmig (ITYPE 1 e 2); Y (complexo) e S
 c     (real) sao o mesmo vetor, como a EQUIVALENCE (s(1),y(1))
       COMPLEX Y(*)
       REAL S(*),DATA(*),VELS(NXOUT*NYOUT,*),ZMUT(*),HZ(*)
       REAL CUBE(NXOUT*NYOUT,*)
-      INTEGER INFO(*)
+      INTEGER INFO(*),IFOC(*)
+      REAL TDAT(*)
+c     SEASEIS: analise de velocidade por focalizacao (test3dbcpmig,
+c     FORX LORX FORY LORY RNIX RNIY WINDOW): FDAT = 'data' do original
+c     (um nivel), WF = y(ia) (espectro + trabalho da fftc), WB = y(ib)
+      REAL, ALLOCATABLE :: FDAT(:)
+      COMPLEX, ALLOCATABLE :: WF(:),WB(:)
 c     SEASEIS: OpenMP no laco de frequencias. Cada thread tem seu
 c     proprio scratch a,b,c (antes y(ia),y(ib),y(ic)) em WTH.
       COMPLEX, ALLOCATABLE :: WTH(:)
@@ -377,6 +386,21 @@ c     proprio scratch a,b,c (antes y(ia),y(ib),y(ic)) em WTH.
       allocate(wth(nsc*nthr))
       ith=0
       nvels=nint(apx-10.)
+      ngsnx=ifoc(1)
+      ngsny=ifoc(2)
+      iforx=ifoc(3)
+      ifory=ifoc(4)
+      irnix=ifoc(5)
+      irniy=ifoc(6)
+      jnt=ifoc(7)
+      ngsns=ngsnx*ngsny
+      sr=1000.*dt
+      twindow=(jnt-1)*sr
+      ilorx=iforx+(ngsnx-1)*irnix
+      ilory=ifory+(ngsny-1)*irniy
+      if(ngsns.gt.0)then
+      allocate(fdat(jnt*ngsns),wf(22*nt1+10),wb(nhigh-nlow+12))
+      endif
       nwdst=nx*ny*itzr
       dz=itzr*ddz
       delw=2.*3.1415927/nt1
@@ -566,6 +590,56 @@ c     SEASEIS: soma no cubo de saida (antes: arquivo 'indata')
       call embed(data(i1),cube(1,i2),nx,ny,nxout,nyout,ixout,iyout)
       end do
       endif
+c   ***   SEASEIS: analise de focalizacao (velocity focussing) de
+c   ***   test3dbcpmig, ramo itype 1/2: em cada ponto de analise da
+c   ***   grade de saida, o campo continuado y(iz) e deslocado pelo
+c   ***   tempo de chegada menos meia janela e levado ao tempo; a
+c   ***   janela (jnt amostras) e somada em TDAT (nivel kk0)
+      if(ngsns .eq. 0)goto 771
+      call clear(fdat,jnt*ngsns)
+      do jy=1,ny
+      do jx=1,nx
+      jxx=jx+ixout-1
+      jyy=jy+iyout-1
+      modx=mod(jxx-iforx,irnix)
+      mody=mod(jyy-ifory,irniy)
+      if( (jxx.ge.iforx .and. jxx.le.ilorx .and. modx.eq.0) .and.
+     *    (jyy.ge.ifory .and. jyy.le.ilory .and. mody.eq.0) )then
+      jgsny=(jyy-ifory)/irniy +1
+      jgsnx=(jxx-iforx)/irnix +1
+      jgsn=(jgsny-1)*ngsnx +jgsnx
+      itdat=(jgsn-1)*jnt+1
+      if(kk0.gt.kstart)then
+      call clear(wf,2*nt1)
+      ii=nl
+      jxy= (jy-1)*nx + jx
+      do jj=0,nws-1
+      wf(ii+jj)=y(iz+ jxy-1 + jj*nxy)
+      end do
+c   ***   select arrival time for this gsn location
+      if(itype.eq.1) shf=s(itu1+jxy-1)-.5*twindow/sr
+      if(itype.eq.2) shf=s(itd1+jxy-1)-.5*twindow/sr
+c   ***   shift complex data by this amount
+      call vshift1(wf(ii),wb,wb,wb(nws+3),shf,delw,nl,nh,1,1.)
+c   ***   inverse transform
+      call fftc(wf,wf(nt1+1),2,2*nt1,nt1,1,+1)
+      do jj=1,jnt
+      fdat(itdat+jj-1)= fdat(itdat+jj-1)-xx*real(wf(jj))
+      end do
+      endif
+      end if
+      end do
+      end do
+c   ***   sum this level of velocity coherence info to TDAT
+      i0=(kk0-1)*jnt*ngsns
+      do j=1,ngsns
+      itdat=(j-1)*jnt
+      do jj=1,jnt
+      tdat(i0+itdat+jj)=tdat(i0+itdat+jj)+fdat(itdat+jj)
+      enddo
+      tdat(i0+itdat+jnt)=fdat(itdat+jnt)
+      enddo
+771   continue
       call movlev(y(iy),y(iz),2*nxyws)
 2000   continue
       RETURN
