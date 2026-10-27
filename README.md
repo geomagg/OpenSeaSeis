@@ -29,15 +29,26 @@ and the corrected average velocity is V_new(T) = V_old(T) (1 - DT / (f T)).
 2. SPK_TAU2VFIX: tau panels to velocity coherence panels; SPK_VTRACK draws the migration velocity on them.
 3. Picks (T, Vavg) -> V_int = (V2 T2 - V1 T1) / (T2 - T1) -> new model, and migrate again.
 
+Up-going or down-going field: SPK_XVSPMIG1 migrates the up-going field (Z - F P, direct
+migration) and SPK_XVSPMIG2 the down-going field (Z + F P, mirror migration). Both produce
+focusing panels. The mirror image has wider illumination in the shallow section, and the up-going
+image is cleaner at depth. Picks from both can be combined: down-going above a switch time,
+up-going below it.
+
+Multi-core: SPK_XVSPMIG1, SPK_XVSPMIG2 and SPK_3DBCPMIG migrate the frequencies in parallel
+(OpenMP). Parameter `threads` (default 0 = `OMP_NUM_THREADS` or all cores). The result is
+identical to the serial run for any number of threads. Test with 17 nodes (2D, 2 cores):
+SPK_XVSPMIG1 588 s -> 184 s, SPK_XVSPMIG2 651 s -> 217 s.
+
 A complete example on a 2D synthetic, with one script, is in `example_flows/spk_focus_synthetic`;
 the step-by-step description (in Portuguese) is `doc/SPK_depth_focusing_velocity_analysis_pt.pdf`.
 
 ### In memory of Dwight Sukup
 
 In 2014 a project funded by FINEP in Brazil, for the development of OBN imaging, brought
-together **Dwight Sukup** (Texaco E&P Research), **Patricia Crawford** and **Marcos Gallotti**,
-both of the former Geonunes. All the codes were rewritten for OBN data. Only the name SEISPAK,
-the Texaco processing system, was kept (the `SPK_` prefix), as a tribute to Dwight himself and
+together **Dwight Sukup** (at Geonunes from 2013 to 2016), **Patricia Crawford** and
+**Marcos Gallotti**, all of the former Geonunes. All the codes were rewritten for OBN data.
+Only the name SEISPAK was kept (the `SPK_` prefix), as a tribute to Dwight himself and
 to those who worked with him. Years later, Dwight's code can still be followed line by line,
 and it still produces correct images. This fork is dedicated to his memory.
 
