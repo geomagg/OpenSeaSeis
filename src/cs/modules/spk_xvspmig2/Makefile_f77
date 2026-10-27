@@ -4,12 +4,16 @@ MODDIR    = $(SRCDIR)/cs/modules/$(MODULE_NAME)
 MODULE    = $(MODDIR)/mod_$(MODULE_NAME).cc
 OBJS      = $(OBJDIR)/mod_$(MODULE_NAME).o
 F77DIR    = $(MODDIR)/fortran
-OBJS_F77  = $(OBJDIR)/spkvsp.o $(OBJDIR)/spkvsp_dvslib.o $(OBJDIR)/spkvsp_sub.o $(OBJDIR)/spkvsp_vevents.o $(OBJDIR)/spkvsp_foc.o
+OBJS_F77  = $(OBJDIR)/spkvsp.o $(OBJDIR)/spkvsp_dvslib.o $(OBJDIR)/spkvsp_sub.o $(OBJDIR)/spkvsp_vevents.o $(OBJDIR)/spkvsp_foc.o $(OBJDIR)/spkvsp_omp.o
 LIB_v1.0  = libmod_$(MODULE_NAME).so.1.0
 
 # -std=legacy: codigo Fortran 77 antigo (mesmo vetor passado como real e complexo)
 # -fno-automatic em dvslib_vsp.f: variaveis locais estaticas, como no g77 (arriv6, cacomt2)
 F77_LEGACY = $(F77_FLAGS) -std=legacy -fPIC
+# OpenMP em vsp_omp.f (copia reentrante de multpspi/fftc, sem -fno-automatic):
+# frequencias continuadas em paralelo. -O2 -fno-tree-vectorize: rapido e com o
+# mesmo resultado da versao serial (sem sin/cos vetorizados da libmvec)
+F77_OMP    = $(F77_LEGACY) -O2 -fno-tree-vectorize -fopenmp
 
 INCS =  -I"$(SRCDIR)/cs/geolib"  -I"$(SRCDIR)/cs/system" -I"$(MODDIR)"
 
@@ -27,7 +31,7 @@ $(OBJDIR)/mod_$(MODULE_NAME).o: $(MODULE)
 	$(CPP) -c $(ALL_FLAGS) $(MODULE) -o $(OBJDIR)/mod_$(MODULE_NAME).o
 
 $(LIBDIR)/$(LIB_v1.0): $(OBJS) $(OBJS_F77)
-	$(CPP) -fPIC -shared -Wl,-$(SONAME),$(LIB_v1.0) -Wl,-rpath,$(LIBDIR) -o $(LIBDIR)/$(LIB_v1.0) $(OBJS) $(OBJS_F77) -L$(LIBDIR) -lc -lgeolib -lcseis_system -lgfortran
+	$(CPP) -fPIC -shared -Wl,-$(SONAME),$(LIB_v1.0) -Wl,-rpath,$(LIBDIR) -o $(LIBDIR)/$(LIB_v1.0) $(OBJS) $(OBJS_F77) -L$(LIBDIR) -lc -lgeolib -lcseis_system -lgfortran -fopenmp
 
 
 $(OBJDIR)/spkvsp.o: $(F77DIR)/spkvsp.f
@@ -45,3 +49,6 @@ $(OBJDIR)/spkvsp_vevents.o: $(F77DIR)/vevents_vsp.f
 # analise de coerencia (FOR LOR RNI WINDOW VMIN VMAX EPS), comum aos dois modulos
 $(OBJDIR)/spkvsp_foc.o: $(F77DIR)/vsp_foc.f
 	$(F77) -c $(F77_LEGACY) $(F77DIR)/vsp_foc.f -o $(OBJDIR)/spkvsp_foc.o
+
+$(OBJDIR)/spkvsp_omp.o: $(F77DIR)/vsp_omp.f
+	$(F77) -c $(F77_OMP) $(F77DIR)/vsp_omp.f -o $(OBJDIR)/spkvsp_omp.o

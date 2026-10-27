@@ -326,17 +326,17 @@ c   ***   write complex field to working array
       end do
 c   ***   above the node: continue only the recorded (upcoming) field
       if(k.lt.kstart)then
-      call multpspi(y(iy),y(ia),y(ib),y(ic),s(is),nl,nh,nt1,nx,
+      call multpspi_omp(y(iy),nl,nh,nt1,nx,
      * s(ishft),s(iv),sgn,nvels)
        do j=1,nxws
        y(iz+j-1)=y(iy+j-1)
        end do
       else
 c   ***   downward continue upcomming field
-      call multpspi(y(iy),y(ia),y(ib),y(ic),s(is),nl,nh,nt1,nx,
+      call multpspi_omp(y(iy),nl,nh,nt1,nx,
      * s(ishft),s(iv),sgn,nvels)
 c   ***   downward continue downgoing (source) field
-      call multpspi(y(iy1),y(ia),y(ib),y(ic),s(is),nl,nh,nt1,nx,
+      call multpspi_omp(y(iy1),nl,nh,nt1,nx,
      * s(ishft),s(iv),-sgn,nvels)
       end if
 c   ***   apply koslov absorbing boundary for pspi

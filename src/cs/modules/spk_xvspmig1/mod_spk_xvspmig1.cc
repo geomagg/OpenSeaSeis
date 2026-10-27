@@ -28,6 +28,7 @@ using namespace std;
  */
 
 extern "C" {
+  void spkvsp_threads_( int* n );
   void spkvsp1_( float* d, int* nt, int* nntr, int* nrecs, float* sr, float* afit, float* alph, float* gz, float* spjn,
                 int* nnz, int* itzr, float* ddz, float* dx, float* apx, float* frq1, float* frq2, float* oty,
                 float* amute, int* ltm, int* lev1, float* stk, int* nstk, float* outr, int* ioutr, int* info, int* ierr,
@@ -37,6 +38,7 @@ extern "C" {
 
 namespace mod_spk_xvspmig1 {
   struct VariableStruct {
+    int nthr;   // threads OpenMP (0 = todos)
     int   ntIn, nnz, itzr, ltm, lev1;
     float sr, ddz, dx, apx, frq1, frq2, oty, amute;
     bool  geomHeaders;
@@ -183,6 +185,7 @@ void init_mod_spk_xvspmig1_( csParamManager* param, csInitPhaseEnv* env, csLogWr
   csSuperHeader*    shdr = env->superHeader;
   csTraceHeaderDef* hdef = env->headerDef;
   VariableStruct* vars = new VariableStruct();
+  vars->nthr = 0;
   edef->setVariables( vars );
   edef->setTraceSelectionMode( TRCMODE_FIXED, 1 );
 
@@ -198,6 +201,7 @@ void init_mod_spk_xvspmig1_( csParamManager* param, csInitPhaseEnv* env, csLogWr
   vars->nxv = vars->np = 0;
   vars->gather = NULL;
 
+  if( param->exists("threads") ) param->getInt( "threads", &vars->nthr );
   if( param->exists("apx") )   param->getFloat( "apx", &vars->apx );
   if( param->exists("itzr") )  param->getInt( "itzr", &vars->itzr );
   if( param->exists("frq1") )  param->getFloat( "frq1", &vars->frq1 );
@@ -501,6 +505,13 @@ void exec_mod_spk_xvspmig1_( csTraceGather* traceGather, int* port, int* numTrcT
   std::vector<float> tdat( vars->focus ? (size_t)jnt*nz2*ngsn + 10 : 1 ), otau( vars->focus ? (size_t)nt*jnt1*ngsn : 1 ),
                      ovc( otau.size() ), ovavg( vars->focus ? (size_t)nt*ngsn : 1 ), picks( vars->focus ? (size_t)201*ngsn : 1, 0.0f );
   float frq2 = vars->frq2;
+  {
+    int nthr = 0;
+    if( vars->nthr > 0 ) nthr = vars->nthr;
+    spkvsp_threads_( &nthr );
+    if( nthr > 0 ) writer->line("  OpenMP threads (frequency loop): %d", nthr);
+    else writer->line("  OpenMP threads (frequency loop): all cores (or OMP_NUM_THREADS)");
+  }
   writer->line("  Migrating...");
   spkvsp1_( &d[0], &nt, &nntr, &nrecs, &vars->sr, &vars->afit[0], &alph[0], &gz[0], &spjn[0], &vars->nnz, &vars->itzr,
            &vars->ddz, &vars->dx, &vars->apx, &vars->frq1, &frq2, &vars->oty, &vars->amute, &vars->ltm, &vars->lev1,
@@ -590,6 +601,10 @@ void params_mod_spk_xvspmig1_( csParamDef* pdef ) {
                    "the node (no mirror image), amplitude restoration, angle mute from the node depth down, and stack of all records. "
                    "For the down-going field (mirror imaging) use SPK_XVSPMIG2. "
                    "Input: records with the same number of traces, sorted by trace position, spacing DX. Computation by the original Fortran." );
+  pdef->addParam( "threads", "Number of CPU threads (OpenMP, frequencies continued in parallel)", NUM_VALUES_FIXED,
+                  "Default 0: OMP_NUM_THREADS if set, else all cores. Same result for any number of threads" );
+  pdef->addValue( "0", VALTYPE_NUMBER, "Threads" );
+
   pdef->addParam( "apx", "Migration algorithm", NUM_VALUES_FIXED );
   pdef->addValue( "12", VALTYPE_NUMBER, ">= 11: multi-velocity PSPI with APX-10 reference velocities" );
   pdef->addParam( "dx", "Trace spacing within a record (DDD)", NUM_VALUES_FIXED );

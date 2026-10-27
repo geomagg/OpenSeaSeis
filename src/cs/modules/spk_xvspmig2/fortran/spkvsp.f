@@ -318,12 +318,12 @@ c   ***   write complex field to working array
        nvels=nint(apx-10.)
 c   ***   downward continue downgoing field
        if(k.ge.kstart)then
-       call multpspi(y(iy1),y(ia),y(ib),y(ic),s(is),nl,nh,nt1,nx,
+       call multpspi_omp(y(iy1),nl,nh,nt1,nx,
      * s(ishft),s(iv),-sgn,nvels)
         endif
 c   ***   downward continue upcomming field
         if(k+kshot .gt. 0)then
-      call multpspi(y(iy),y(ia),y(ib),y(ic),s(is),nl,nh,nt1,nx,
+      call multpspi_omp(y(iy),nl,nh,nt1,nx,
      * s(ishft),s(iv),sgn,nvels)
         endif
 c   ***   apply koslov absorbing boundary for pspi
